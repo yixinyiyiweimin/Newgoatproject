@@ -11,7 +11,6 @@ This repository is for Version control (Git History), Progress traceability (Fro
     ├── Backend_Business_Logic.md      ← Truth START (you maintain with me)
     ├── Frontend_Component_Mapping.xlsx ← Truth END (extracted from code)
     ├── Frontend_Coding_Standards.md    ← AI reads before coding
-
     └── Development_Log.md              ← Session handoff
   
   /frontend
