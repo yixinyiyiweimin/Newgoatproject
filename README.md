@@ -1,5 +1,5 @@
 # Newgoatproject
-This repository is for Version control (Git History), Progress traceability (Frontend_Component_Mapping) and info aggregation (Draft clean readme)
+This repository is for Version control (Git History), Progress traceability (Frontend_Component_Mapping) and info aggregation (Better README to be drafted)
 
 ---
 
