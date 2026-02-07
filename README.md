@@ -6,11 +6,12 @@ This repository is for Version control (Git History), Progress traceability (Fro
 # Folder Structure
 ```
 /project-root
+    └── Code_To_Excel_Extraction.md     ← AI uses to sync Excel
   /docs
     ├── Backend_Business_Logic.md      ← Truth START (you maintain with me)
     ├── Frontend_Component_Mapping.xlsx ← Truth END (extracted from code)
     ├── Frontend_Coding_Standards.md    ← AI reads before coding
-    ├── Code_To_Excel_Extraction.md     ← AI uses to sync Excel
+
     └── Development_Log.md              ← Session handoff
   
   /frontend
