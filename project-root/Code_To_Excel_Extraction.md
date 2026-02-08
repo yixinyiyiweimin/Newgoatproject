@@ -1,8 +1,10 @@
-# Code to Excel Extraction Prompt
+# Code to CSV Extraction Prompt
 
 ## Purpose
 
-Use this prompt to regenerate `Frontend_Component_Mapping.xlsx` from the codebase. This ensures Excel stays in sync with actual code after development.
+Use this prompt to regenerate `Frontend_Component_Mapping.csv` from the codebase. This ensures the component mapping stays in sync with actual code after development.
+
+**Note:** We use CSV (not xlsx) because AI tools like Claude Code cannot read binary Excel files. You can still open CSV in Excel for editing.
 
 ---
 
@@ -20,7 +22,7 @@ Use this prompt to regenerate `Frontend_Component_Mapping.xlsx` from the codebas
 Copy and paste this to AI:
 
 ```
-TASK: Extract all @component tags from the frontend codebase and output as Excel-compatible data.
+TASK: Extract all @component tags from the frontend codebase and output as CSV-compatible data.
 
 SCAN: All .jsx, .tsx, .js, .ts files in /frontend/src
 
@@ -37,30 +39,33 @@ EXTRACT THESE FIELDS (in order):
 8. api_endpoint (from @api, empty if not found)
 9. db_tables (leave empty - will be filled from Business Logic doc)
 10. notes (from @notes, empty if not found)
+11. ui_ready (from status or empty)
+12. api_ready (from status or empty)
+13. db_verified (from status or empty)
 
 OUTPUT FORMAT:
-Tab-separated values (TSV) that can be pasted into Excel.
+CSV format that can be saved directly or pasted into Excel.
 
 ALSO REPORT:
-1. Components found in code but NOT in current Excel (NEW)
-2. Components in Excel but NOT found in code (DELETED or MISSING TAG)
+1. Components found in code but NOT in current CSV (NEW)
+2. Components in CSV but NOT found in code (DELETED or MISSING TAG)
 3. Components with field mismatches (MODIFIED)
 
 EXAMPLE OUTPUT:
 
 === EXTRACTED COMPONENTS (199 total) ===
 
-UR_ID	Comp_ID	Label	Path	Archetype	Links_To	Trigger	API_Endpoint	DB_Tables	Notes
-2.2.5	U-GOAT-016	Save Button	/goats	ACTION		onClick	POST /api/goats		
-2.2.5	U-GOAT-017	Edit Row Button	/goats	ACTION		onClick	PATCH /api/goats/:id		Permission-based
+UR_ID,Comp_ID,Label,Path,Archetype,Links_To,Trigger,API_Endpoint,DB_Tables,Notes,UI_Ready,API_Ready,DB_Verified
+2.2.5,U-GOAT-016,Save Button,/goats,ACTION,,onClick,POST /api/goats,,,,,
+2.2.5,U-GOAT-017,Edit Row Button,/goats,ACTION,,onClick,PATCH /api/goats/:id,,Permission-based,,,
 ...
 
 === DISCREPANCIES ===
 
-NEW (in code, not in Excel):
+NEW (in code, not in CSV):
 - U-GOAT-020: Export CSV Button (added during sprint)
 
-MISSING (in Excel, not in code):
+MISSING (in CSV, not in code):
 - U-GOAT-018: May have been deleted or tag removed
 
 MODIFIED (field differences):
@@ -68,18 +73,20 @@ MODIFIED (field differences):
 
 === RECOMMENDED ACTIONS ===
 
-1. Add U-GOAT-020 to Excel
+1. Add U-GOAT-020 to CSV
 2. Verify U-GOAT-018 deletion was intentional
-3. Update U-GOAT-016 api field in Excel
+3. Update U-GOAT-016 api field in CSV
 ```
 
 ---
 
 ## How to Use the Output
 
-1. **Copy the TSV data** → Paste into Excel (it will auto-fill columns)
+1. **Copy the CSV data** → Save as `Frontend_Component_Mapping.csv` or paste into Excel
 2. **Review discrepancies** → Decide what to do with each
-3. **Update master Excel** → Only after human review
+3. **Update master CSV** → Only after human review
+
+**Tip:** If editing in Excel, always "Save As" → CSV (not xlsx) to keep AI compatibility.
 
 ---
 
@@ -115,7 +122,7 @@ TASK: List all @component @id values found in /frontend/src/pages/goats/
 
 OUTPUT: Just the IDs, one per line
 
-COMPARE: Against Excel rows where Path = "/goats"
+COMPARE: Against CSV rows where Path = "/goats"
 
 REPORT: Any mismatches
 ```
@@ -127,7 +134,7 @@ REPORT: Any mismatches
 This process is manual (AI reads code, outputs data). For a fully automated pipeline, you would need:
 
 1. A script that parses JSDoc-style comments
-2. A script that writes to .xlsx files
+2. A script that writes to .csv files
 3. A CI/CD hook that runs on every commit
 
 For now, manual extraction with AI works well for a 3-person team.

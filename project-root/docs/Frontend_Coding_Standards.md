@@ -4,7 +4,7 @@
 
 This document tells AI how to write frontend code so that:
 1. Every UI component is tagged and traceable
-2. Code can be parsed back into Excel automatically
+2. Code can be parsed back into CSV automatically
 3. Nothing gets lost between coding sessions
 
 ---
@@ -113,12 +113,12 @@ NUMBER:
 ## Rule 6: What AI Must NOT Do
 
 1. **Never modify these files directly:**
-   - `Frontend_Component_Mapping.xlsx`
+   - `Frontend_Component_Mapping.csv`
    - `Backend_Business_Logic.md`
 
 2. **Instead, write proposed changes to `Development_Log.md`:**
    ```markdown
-   ## Proposed Excel Update
+   ## Proposed CSV Update
    - Add row: U-GOAT-019, Export PDF Button, /goats, ACTION, onClick, GET /api/goats/export
    
    ## Proposed Business Logic Update
@@ -148,8 +148,8 @@ NUMBER:
 |----|-------|------|-----------|-----|
 | U-GOAT-019 | Export PDF Button | /goats | ACTION | GET /api/goats/export |
 
-### Proposed Excel Update
-Add above row to Frontend_Component_Mapping.xlsx
+### Proposed CSV Update
+Add above row to Frontend_Component_Mapping.csv
 
 ### Proposed Business Logic Update
 New endpoint GET /api/goats/export not in current Backend_Business_Logic.md
@@ -196,7 +196,7 @@ Needs: Returns PDF/CSV of filtered goat list
 Before coding, AI should:
 
 1. Read `Backend_Business_Logic.md` (understand what APIs exist)
-2. Read `Frontend_Component_Mapping.xlsx` (understand what components exist)
+2. Read `Frontend_Component_Mapping.csv` (understand what components exist)
 3. Read `Development_Log.md` (understand pending work)
 4. Ask human: "What are we working on today?"
 
@@ -207,9 +207,62 @@ Before coding, AI should:
 Before ending, AI should:
 
 1. List all new/modified/deleted components in `Development_Log.md`
-2. Note any proposed changes to Excel or Business Logic
+2. Note any proposed changes to CSV or Business Logic
 3. Ask human: "Should I update the master documents?"
 4. Only update after explicit confirmation
+
+---
+
+## Rule 12: Progress Tracking (Three Checkboxes)
+
+The CSV has three status columns for tracking implementation progress:
+
+| Column | Tracks | Who Updates |
+|--------|--------|-------------|
+| **UI_Ready** | React component coded and works | You / AI after frontend coding |
+| **API_Ready** | Express endpoint coded and works | You / AI after API coding |
+| **DB_Verified** | Database tables/columns confirmed | You after verifying in pgAdmin |
+
+**Status Values:**
+
+| Value | Meaning |
+|-------|---------|
+| *(empty)* | Not done |
+| `✓` | Done and verified |
+
+**What "All 3 Checked" Means:**
+
+```
+User clicks button (UI_Ready ✓)
+    ↓
+API receives request (API_Ready ✓)
+    ↓
+Database updated correctly (DB_Verified ✓)
+    ↓
+Response returns to UI
+    ↓
+= END-TO-END WORKING
+```
+
+**How AI Should Update Status:**
+
+At end of session, AI writes to Development_Log.md:
+
+```markdown
+## Status Updates to Apply
+
+| Comp_ID | UI_Ready | API_Ready | DB_Verified | Notes |
+|---------|:--------:|:---------:|:-----------:|-------|
+| U-GOAT-016 | ✓ | ✓ | ✓ | Fully tested |
+| U-GOAT-017 | ✓ | | ✓ | Waiting for PATCH endpoint |
+| U-GOAT-018 | ✓ | ✓ | | Need to verify farm.goat table |
+```
+
+Human confirms, then updates CSV.
+
+**Before Checking All 3 Boxes:**
+
+Run the relevant test cases from `TESTING_CHECKLIST.md` to verify end-to-end flow works.
 
 ---
 
