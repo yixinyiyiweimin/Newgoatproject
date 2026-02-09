@@ -1050,10 +1050,12 @@ goat-rfid-api/
 
 This is how Express talks to your database. Every service uses this.
 
+**Rule:** Never hardcode the URL. Always use environment variable.
+
 ```javascript
 // src/utils/postgrest.js
 const axios = require('axios');
-const POSTGREST_URL = process.env.POSTGREST_URL || 'http://10.101.170.142:3001';
+const POSTGREST_URL = process.env.POSTGREST_URL || 'https://raspberrypi.tail08c084.ts.net:10000';
 
 const client = axios.create({ baseURL: POSTGREST_URL });
 
