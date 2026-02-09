@@ -50,22 +50,22 @@ const SaveGoatButton = () => {
 ## Rule 3: Component ID Format
 
 ```
-{VIEW}-{PAGE}-{NUMBER}
+{PREFIX}-{PAGE}-{NUMBER}
 
-VIEW:
+PREFIX:
+  (none) = Shared pages (LOGIN, FORGOT, NAV)
   U = User view
   A = Admin view
-  S = Shared (like login)
 
 PAGE (examples):
-  LOGIN, FORGOT, DASH, GOAT, VAX, BREED, HEALTH, SLAUGH, FEEDPRICE, FEEDCALC, ROLES, UREG
+  LOGIN, FORGOT, NAV, DASH, GOAT, VAX, BREED, HEALTH, SLAUGH, FEEDPRICE, FEEDCALC, ROLES, UREG
 
 NUMBER:
   Three digits, sequential: 001, 002, 003...
 ```
 
 **Examples:**
-- `S-LOGIN-001` → Shared Login page, first component
+- `LOGIN-001` → Login page, first component
 - `U-GOAT-016` → User Goat Management page, 16th component
 - `A-VAX-003` → Admin Vaccine Type page, 3rd component
 
@@ -89,7 +89,7 @@ NUMBER:
   /src
     /pages
       /login
-        LoginPage.jsx        ← S-LOGIN-xxx components
+        LoginPage.jsx        ← LOGIN-xxx components
       /admin
         /dashboard
           AdminDashboard.jsx ← A-DASH-xxx components
