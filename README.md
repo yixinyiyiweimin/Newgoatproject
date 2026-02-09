@@ -66,22 +66,22 @@ NEXT SESSION
 From D16.1
 ```
 SESSION 1: Frontend Dev
-├── AI reads: BLL.md, Excel
+├── AI reads: BBL.md, cvs, DevLog, Coding_Standards 
 ├── AI writes: React code (with tags)
 ├── AI writes: DEVLOG.md "Added U-GOAT-016, needs POST /api/goats"
-└── Human: Verify, then confirm "update Excel"
+└── Human: Verify, then confirm "update cvs"
 
 SESSION 2: API Dev  
-├── AI reads: BLL.md, DEVLOG.md (sees what frontend needs)
+├── AI reads: BL.md, cvs, DevLog                    
 ├── AI writes: Express code
-├── AI writes: DEVLOG.md "Implemented POST /api/goats, needs farm.goat table"
+├── AI writes: DEVLOG.md "Implemented POST /api/goats"
 └── Human: Verify, then confirm "update BLL if logic changed"
 
 SESSION 3: Database
-├── AI reads: DEVLOG.md (sees what API needs)
+├── AI reads: DevLog                                   
 ├── Human: Update pgAdmin
 ├── Export: schema_export.sql
-└── Human: Move DEVLOG to LOG_HISTORY.md, clear DEVLOG
+└── Human: Update cvs checkboxes, clear DevLog
 ```
 
 
