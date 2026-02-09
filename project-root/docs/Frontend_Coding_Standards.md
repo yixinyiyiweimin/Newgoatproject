@@ -213,7 +213,7 @@ Before ending, AI should:
 
 ---
 
-## Rule 12: Progress Tracking (Three Checkboxes)
+## Rule 12: Progress Tracking (Three Status Columns)
 
 The CSV has three status columns for tracking implementation progress:
 
@@ -227,17 +227,20 @@ The CSV has three status columns for tracking implementation progress:
 
 | Value | Meaning |
 |-------|---------|
-| *(empty)* | Not done |
-| `✓` | Done and verified |
+| *(blank)* | TODO - Not started |
+| `In_Progress` | Currently being worked on |
+| `Blocked` | Cannot proceed, has dependency or issue |
+| `Done` | Completed and verified |
+| `Reopened` | Was done, but needs rework |
 
-**What "All 3 Checked" Means:**
+**What "All 3 Done" Means:**
 
 ```
-User clicks button (UI_Ready ✓)
+User clicks button (UI_Ready = Done)
     ↓
-API receives request (API_Ready ✓)
+API receives request (API_Ready = Done)
     ↓
-Database updated correctly (DB_Verified ✓)
+Database updated correctly (DB_Verified = Done)
     ↓
 Response returns to UI
     ↓
@@ -252,15 +255,16 @@ At end of session, AI writes to Development_Log.md:
 ## Status Updates to Apply
 
 | Comp_ID | UI_Ready | API_Ready | DB_Verified | Notes |
-|---------|:--------:|:---------:|:-----------:|-------|
-| U-GOAT-016 | ✓ | ✓ | ✓ | Fully tested |
-| U-GOAT-017 | ✓ | | ✓ | Waiting for PATCH endpoint |
-| U-GOAT-018 | ✓ | ✓ | | Need to verify farm.goat table |
+|---------|----------|-----------|-------------|-------|
+| U-GOAT-016 | Done | Done | Done | Fully tested |
+| U-GOAT-017 | Done | In_Progress | Done | PATCH endpoint WIP |
+| U-GOAT-018 | Done | Done | Blocked | Waiting for farm.goat table |
+| U-GOAT-019 | In_Progress | | | Started form layout |
 ```
 
 Human confirms, then updates CSV.
 
-**Before Checking All 3 Boxes:**
+**Before Marking All 3 as Done:**
 
 Run the relevant test cases from `TESTING_CHECKLIST.md` to verify end-to-end flow works.
 
