@@ -66,13 +66,13 @@ NEXT SESSION
 From D16.1
 ```
 SESSION 1: Frontend Dev
-├── AI reads: BBL.md, cvs, DevLog, Coding_Standards 
+├── AI reads: BLL.md, cvs, DevLog, Coding_Standards 
 ├── AI writes: React code (with tags)
 ├── AI writes: DEVLOG.md "Added U-GOAT-016, needs POST /api/goats"
 └── Human: Verify, then confirm "update cvs"
 
 SESSION 2: API Dev  
-├── AI reads: BL.md, cvs, DevLog                    
+├── AI reads: BLL.md, cvs, DevLog                    
 ├── AI writes: Express code
 ├── AI writes: DEVLOG.md "Implemented POST /api/goats"
 └── Human: Verify, then confirm "update BLL if logic changed"
