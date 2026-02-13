@@ -5,7 +5,7 @@ Each section follows this format:
 - **URS Reference**: Section number from URS V1.2
 - **What the frontend sends**: The request shape
 - **What Express does**: The business logic (validation, computation, multi-step)
-- **Database queries**: The SQL queries Express runs via the `pg` library
+- **PostgREST calls**: The actual HTTP calls Express makes to port 3001
 - **What the frontend receives**: The response shape
 - **Gaps/Decisions**: Things not covered by your current DB or URS
 
@@ -34,16 +34,11 @@ Each section follows this format:
    - password is required, non-empty
 
 2. FIND user account
-   → SELECT user_account_id, email, phone_number, password_hash, status, failed_login_attempts
-     FROM auth.user_account
-     WHERE email = $1 OR phone_number = $1
-   -- params: [identifier]
+   → GET http://localhost:3001/auth/user_account?or=(email.eq.{identifier},phone_number.eq.{identifier})&select=user_account_id,email,phone_number,password_hash,status,failed_login_attempts
    
 3. CHECK account exists
    - If not found → return 401 "Invalid credentials"
-   - Log failed attempt:
-     → INSERT INTO auth.login_attempt (user_account_id, login_identifier, status, failure_reason, ip_address)
-       VALUES ($1, $2, 'FAILED', 'User not found', $3)
+   - Log failed attempt → POST /audit/login_attempt
 
 4. CHECK account status
    - If status != 'ACTIVE' → return 403 "Account is inactive"
@@ -54,32 +49,21 @@ Each section follows this format:
 6. VERIFY password
    - bcrypt.compare(password, stored password_hash)
    - If mismatch:
-     → UPDATE auth.user_account SET failed_login_attempts = failed_login_attempts + 1 WHERE user_account_id = $1
-     → INSERT INTO auth.login_attempt (user_account_id, login_identifier, status, failure_reason, ip_address)
-       VALUES ($1, $2, 'FAILED', 'Invalid password', $3)
+     → PATCH /auth/user_account?user_account_id=eq.{id}  body: { failed_login_attempts: current + 1 }
+     → POST /auth/login_attempt  body: { user_account_id, login_identifier, status: 'FAILED', failure_reason: 'Invalid password', ip_address }
      → return 401 "Invalid credentials"
 
 7. SUCCESS — Reset failed attempts & update last login
-   → UPDATE auth.user_account SET failed_login_attempts = 0, last_login_at = NOW() WHERE user_account_id = $1
-   → INSERT INTO auth.login_attempt (user_account_id, login_identifier, status, ip_address)
-     VALUES ($1, $2, 'SUCCESS', $3)
+   → PATCH /auth/user_account?user_account_id=eq.{id}  body: { failed_login_attempts: 0, last_login_at: now() }
+   → POST /auth/login_attempt  body: { user_account_id, login_identifier, status: 'SUCCESS', ip_address }
 
 8. FETCH user role & permissions
-   → SELECT ur.role_id, r.role_name
-     FROM rbac.user_role ur
-     JOIN rbac.role r ON r.role_id = ur.role_id
-     WHERE ur.user_account_id = $1
-   -- params: [user_account_id]
-
-   → SELECT p.module_name, p.action
-     FROM rbac.role_permission rp
-     JOIN rbac.permission p ON p.permission_id = rp.permission_id
-     WHERE rp.role_id = $1
-   -- params: [role_id]
+   → GET /rbac/user_role?user_account_id=eq.{id}&select=role_id
+   → GET /rbac/role_permission?role_id=eq.{role_id}&select=permission_id
+   → GET /rbac/permission?permission_id=in.({ids})&select=module_name,action
 
 9. FETCH user profile
-   → SELECT * FROM core.user_profile WHERE user_account_id = $1
-   -- params: [user_account_id]
+   → GET /core/user_profile?user_account_id=eq.{id}&select=*
 
 10. GENERATE JWT token containing:
     { user_account_id, email, role_id, role_name, permissions: [...] }
@@ -123,9 +107,7 @@ Each section follows this format:
 **Express business logic:**
 
 ```
-1. FIND user
-   → SELECT user_account_id, email FROM auth.user_account WHERE email = $1
-   -- params: [email]
+1. FIND user → GET /auth/user_account?email=eq.{email}&select=user_account_id,email
    - If not found → return 200 (don't reveal if email exists — security best practice)
 
 2. GENERATE OTP
@@ -133,13 +115,10 @@ Each section follows this format:
    - Expiry = now + 10 minutes
 
 3. STORE OTP
-   → INSERT INTO auth.otp (user_account_id, otp_code, purpose, expires_at)
-     VALUES ($1, $2, 'PASSWORD_RESET', $3)
-   -- params: [user_account_id, hashedOTP, expiresAt]
+   → POST /auth/otp  body: { user_account_id, otp_code: hashedOTP, purpose: 'PASSWORD_RESET', expires_at }
 
 4. SEND OTP via email (or SMS if phone only)
-   → INSERT INTO notify.notification (user_account_id, channel, message_type, status)
-     VALUES ($1, 'EMAIL', 'OTP', 'PENDING')
+   → POST /notify/notification  body: { user_account_id, channel: 'EMAIL', message_type: 'OTP', status: 'PENDING' }
    - Actual email sending: use nodemailer or a service like SendGrid/AWS SES
    
 5. RETURN { message: "If email exists, OTP has been sent" }
@@ -167,14 +146,10 @@ Each section follows this format:
 
 ```
 1. FIND user by email
-   → SELECT user_account_id FROM auth.user_account WHERE email = $1
-   -- params: [email]
+   → GET /auth/user_account?email=eq.{email}
 
 2. FIND latest unused OTP for this user
-   → SELECT otp_id, otp_code, expires_at FROM auth.otp
-     WHERE user_account_id = $1 AND purpose = 'PASSWORD_RESET' AND is_used = false
-     ORDER BY created_at DESC LIMIT 1
-   -- params: [user_account_id]
+   → GET /auth/otp?user_account_id=eq.{id}&purpose=eq.PASSWORD_RESET&is_used=eq.false&order=created_at.desc&limit=1
 
 3. VALIDATE OTP
    - Check otp matches (bcrypt.compare or plain compare depending on storage)
@@ -188,17 +163,13 @@ Each section follows this format:
 5. HASH new password → bcrypt.hash(new_password, 12)
 
 6. UPDATE password
-   → UPDATE auth.user_account SET password_hash = $1, failed_login_attempts = 0 WHERE user_account_id = $2
-   -- params: [hashedPassword, user_account_id]
+   → PATCH /auth/user_account?user_account_id=eq.{id}  body: { password_hash: hashed, failed_login_attempts: 0 }
 
 7. MARK OTP as used
-   → UPDATE auth.otp SET is_used = true WHERE otp_id = $1
-   -- params: [otp_id]
+   → PATCH /auth/otp?otp_id=eq.{otp_id}  body: { is_used: true }
 
 8. LOG audit
-   → INSERT INTO audit.audit_log (actor_user_id, action, entity_name, entity_id)
-     VALUES ($1, 'PASSWORD_RESET', 'user_account', $2)
-   -- params: [user_account_id, user_account_id]
+   → POST /audit/audit_log  body: { actor_user_id: id, action: 'PASSWORD_RESET', entity_name: 'user_account', entity_id: id }
 
 9. RETURN { message: "Password reset successful" }
 ```
@@ -262,16 +233,13 @@ Express logic:
    - name: required, string, max 100 chars, trimmed
    - interval_days: required, integer, > 0
 4. CHECK DUPLICATE name
-   → SELECT vaccine_type_id FROM admin_ref.vaccine_type WHERE name = $1
-   -- params: [name]
+   → GET /admin_ref/vaccine_type?name=eq.{name}
    - If exists → return 409 "Vaccine type name already exists"
 5. CREATE
-   → INSERT INTO admin_ref.vaccine_type (name, interval_days, is_active) VALUES ($1, $2, true) RETURNING *
-   -- params: [name, interval_days]
+   → POST /admin_ref/vaccine_type  body: { name, interval_days, is_active: true }
+   Headers: { Prefer: 'return=representation' }
 6. AUDIT LOG
-   → INSERT INTO audit.audit_log (actor_user_id, action, entity_name, entity_id, new_value)
-     VALUES ($1, 'CREATE', 'vaccine_type', $2, $3)
-   -- params: [req.user.user_account_id, new_id, JSON.stringify({ name, interval_days })]
+   → POST /audit/audit_log  body: { actor_user_id, action: 'CREATE', entity_name: 'vaccine_type', entity_id: new_id, new_value: { name, interval_days } }
 7. RETURN created record
 ```
 
@@ -282,12 +250,10 @@ Express logic:
 ```
 1. AUTH + PERMISSION check
 2. CHECK if in use
-   → SELECT 1 FROM farm.vaccination WHERE vaccine_type_id = $1 LIMIT 1
-   -- params: [id]
+   → GET /farm/vaccination?vaccine_type_id=eq.{id}&limit=1
    - If records exist → return 409 "Cannot delete: vaccine type is used in vaccination records"
 3. SOFT DELETE (set inactive, don't actually delete)
-   → UPDATE admin_ref.vaccine_type SET is_active = false WHERE vaccine_type_id = $1
-   -- params: [id]
+   → PATCH /admin_ref/vaccine_type?vaccine_type_id=eq.{id}  body: { is_active: false }
 4. AUDIT LOG
 5. RETURN 200 { message: "Vaccine type deactivated" }
 ```
@@ -298,9 +264,9 @@ Express logic:
 
 ```
 1. AUTH + PERMISSION('vaccine_type', 'view')
-2. BUILD SQL query:
-   → SELECT * FROM admin_ref.vaccine_type WHERE is_active = true ORDER BY name ASC
-   - If search param: add AND name ILIKE $1  -- params: ['%search%']
+2. BUILD PostgREST query:
+   → GET /admin_ref/vaccine_type?is_active=eq.true&order=name.asc
+   - If search param: add &name=ilike.*{search}*
    - If active_only=false: remove is_active filter
 3. RETURN array
 ```
@@ -310,16 +276,16 @@ Express logic:
 Differences:
 
 - No `interval_days` field (only `name`)
-- Check-in-use query: `SELECT 1 FROM farm.breeding_program WHERE breeding_type_id = $1 LIMIT 1`
-- Database table: `admin_ref.breeding_type`
+- Check-in-use query: `GET /farm/breeding_program?breeding_type_id=eq.{id}&limit=1`
+- PostgREST table: `/admin_ref/breeding_type`
 
 #### 2C. Goat Breed — Same pattern as Vaccine Type
 
 Differences:
 
 - No `interval_days` field (only `name`)
-- Check-in-use query: `SELECT 1 FROM farm.goat WHERE goat_breed_id = $1 LIMIT 1`
-- Database table: `admin_ref.goat_breed`
+- Check-in-use query: `GET /farm/goat?goat_breed_id=eq.{id}&limit=1`
+- PostgREST table: `/admin_ref/goat_breed`
 
 ---
 
@@ -363,61 +329,51 @@ For Company, additional fields: `company_name`, `company_registration_no`, `pers
    - premise_code required
 
 3. CHECK DUPLICATES
-   → SELECT 1 FROM auth.user_account WHERE email = $1  -- (email unique check)
-   → SELECT 1 FROM auth.user_account WHERE phone_number = $1  -- (phone unique check)
-   → SELECT 1 FROM core.user_profile WHERE ic_or_passport = $1  -- (IC unique check)
-   → SELECT 1 FROM core.premise WHERE premise_code = $1  -- (premise duplicate check)
+   → GET /auth/user_account?email=eq.{email}  (email unique check)
+   → GET /auth/user_account?phone_number=eq.{phone}  (phone unique check)
+   → GET /core/user_profile?ic_or_passport=eq.{ic}  (IC unique check)
+   → GET /core/premise?premise_code=eq.{premise_code}  (premise duplicate check)
    - If any exist → return 409 with specific message
 
 4. GENERATE temporary password
    - crypto.randomBytes(8).toString('hex') → e.g., "a3f8b2c1"
    - Hash it: bcrypt.hash(tempPassword, 12)
 
---- BEGIN TRANSACTION (all steps 5-11 use the same db client) ---
-
 5. CREATE user_account
-   → INSERT INTO auth.user_account (email, phone_number, password_hash, status)
-     VALUES ($1, $2, $3, 'ACTIVE') RETURNING user_account_id
-   -- params: [email, phone_number, hashedPassword]
+   → POST /auth/user_account  body: { email, phone_number, password_hash: hashed, status: 'ACTIVE' }
+   - Get back user_account_id
 
 6. CREATE premise
-   → INSERT INTO core.premise (premise_code, state, district, address, status)
-     VALUES ($1, $2, $3, $4, 'ACTIVE') RETURNING premise_id
-   -- params: [premise_code, premise_state, premise_district, premise_address]
+   → POST /core/premise  body: { premise_code, state, district, address: premise_address, status: 'ACTIVE' }
+   - Get back premise_id
 
 7. CREATE user_profile
-   → INSERT INTO core.user_profile (user_account_id, user_type, full_name, company_name, ic_or_passport, company_registration_no, address, email, phone_number, premise_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING user_profile_id
-   -- params: [user_account_id, user_type, full_name, company_name, ic_or_passport, company_registration_no, address, email, phone_number, premise_id]
+   → POST /core/user_profile  body: { user_account_id, user_type, full_name, company_name, ic_or_passport, company_registration_no, address, email, phone_number, premise_id }
+   - Get back user_profile_id
 
 8. UPLOAD documents (if any)
    - Save files to storage (local disk or S3)
    - For each file:
-     → INSERT INTO core.user_document (user_profile_id, file_path, file_type)
-       VALUES ($1, $2, $3)
+     → POST /core/user_document  body: { user_profile_id, file_path, file_type }
 
 9. ASSIGN default role
-   → INSERT INTO rbac.user_role (user_account_id, role_id)
-     VALUES ($1, $2)
-   -- params: [user_account_id, default_farmer_role_id]
+   → POST /rbac/user_role  body: { user_account_id, role_id: default_farmer_role_id }
 
 10. SEND credentials
     - If email exists: send email with { email, tempPassword }
     - If phone exists: send SMS with { phone, tempPassword }
-    → INSERT INTO notify.notification (user_account_id, channel, message_type, status)
-      VALUES ($1, $2, $3, 'SENT')
+    → POST /notify/notification  body: { user_account_id, channel: 'EMAIL'/'SMS', message_type: 'CREDENTIALS', status: 'SENT' }
 
 11. AUDIT LOG
-    → INSERT INTO audit.audit_log (actor_user_id, action, entity_name, entity_id, new_value)
-      VALUES ($1, 'CREATE', 'user_registration', $2, $3)
-
---- COMMIT TRANSACTION ---
---- On any error: ROLLBACK (all steps 5-11 are undone automatically) ---
+    → POST /audit/audit_log  body: { actor_user_id: admin_id, action: 'CREATE', entity_name: 'user_registration', entity_id: user_account_id, new_value: { email, full_name, premise_code } }
 
 12. RETURN { user_account_id, email, premise_code, message: "User created. Credentials sent." }
 ```
 
-**NOTE: Transaction advantage** — With direct PostgreSQL connection via `pg`, steps 5-11 are wrapped in a single transaction (BEGIN/COMMIT/ROLLBACK). If any step fails, everything rolls back cleanly. No orphaned records.
+**IMPORTANT: Error rollback** — If step 7 fails after step 5 succeeded, you have an orphaned user_account. Options:
+
+- Option A: Wrap in try/catch and manually delete on failure
+- Option B: Use PostgreSQL transaction via a PostgREST RPC function (more advanced)
 
 **NPM packages needed:** `multer` (file uploads), `crypto` (temp password)
 
@@ -446,16 +402,13 @@ For Company, additional fields: `company_name`, `company_registration_no`, `pers
 
 ```
 1. AUTH + PERMISSION('role', 'create')
-2. CHECK duplicate:
-   → SELECT 1 FROM rbac.role WHERE role_name = $1
-   -- params: [role_name]
-3. CREATE role:
-   → INSERT INTO rbac.role (role_name, is_system_role) VALUES ($1, false) RETURNING role_id
+2. CHECK duplicate: GET /rbac/role?role_name=eq.{name}
+3. CREATE role: POST /rbac/role  body: { role_name, is_system_role: false }
 4. For each module+action combo, find or create permission:
-   → SELECT permission_id FROM rbac.permission WHERE module_name = $1 AND action = $2
-   → If not exists: INSERT INTO rbac.permission (module_name, action) VALUES ($1, $2) RETURNING permission_id
+   → GET /rbac/permission?module_name=eq.{module}&action=eq.{action}
+   → If not exists: POST /rbac/permission body: { module_name, action }
 5. Link permissions to role:
-   → INSERT INTO rbac.role_permission (role_id, permission_id) VALUES ($1, $2)  -- (for each)
+   → POST /rbac/role_permission  body: { role_id, permission_id }  (for each)
 6. AUDIT LOG
 7. RETURN role with permissions
 ```
@@ -464,13 +417,10 @@ For Company, additional fields: `company_name`, `company_registration_no`, `pers
 
 ```
 1. CHECK if system role → if is_system_role=true → return 403 "Cannot delete system role"
-2. CHECK if assigned:
-   → SELECT 1 FROM rbac.user_role WHERE role_id = $1 LIMIT 1
+2. CHECK if assigned: GET /rbac/user_role?role_id=eq.{id}&limit=1
    → If assigned → return 409 "Role is assigned to users. Reassign first."
-3. DELETE role_permissions:
-   → DELETE FROM rbac.role_permission WHERE role_id = $1
-4. DELETE role:
-   → DELETE FROM rbac.role WHERE role_id = $1
+3. DELETE role_permissions: DELETE /rbac/role_permission?role_id=eq.{id}
+4. DELETE role: DELETE /rbac/role?role_id=eq.{id}
 5. AUDIT LOG
 ```
 
@@ -478,7 +428,7 @@ For Company, additional fields: `company_name`, `company_registration_no`, `pers
 
 ```
 1. CHECK if Super Admin → block
-2. UPDATE auth.user_account SET status = 'INACTIVE' WHERE user_account_id = $1
+2. PATCH /auth/user_account?user_account_id=eq.{id}  body: { status: 'INACTIVE' }
 3. AUDIT LOG with old_value: { status: 'ACTIVE' }, new_value: { status: 'INACTIVE' }
 ```
 
@@ -530,37 +480,30 @@ Image uploaded separately via `POST /api/goats/:id/image` (multipart)
    - goat_breed_id: required, integer
 
 3. CHECK goat_id unique
-   → SELECT 1 FROM farm.goat WHERE goat_id = $1
-   -- params: [goat_id]
+   → GET /farm/goat?goat_id=eq.{goat_id}
    - If exists → 409 "Goat ID already registered"
 
 4. CHECK breed exists & is active
-   → SELECT 1 FROM admin_ref.goat_breed WHERE goat_breed_id = $1 AND is_active = true
-   -- params: [goat_breed_id]
+   → GET /admin_ref/goat_breed?goat_breed_id=eq.{id}&is_active=eq.true
    - If not found → 400 "Invalid or inactive breed"
 
 5. CHECK sire/dam exist (if provided)
-   → SELECT gender FROM farm.goat WHERE goat_id = $1  -- verify exists & gender = 'Male'
-   → SELECT gender FROM farm.goat WHERE goat_id = $1  -- verify exists & gender = 'Female'
+   → GET /farm/goat?goat_id=eq.{sire_id}  — verify exists & gender = 'Male'
+   → GET /farm/goat?goat_id=eq.{dam_id}   — verify exists & gender = 'Female'
    - If sire not male → 400 "Sire must be male"
    - If dam not female → 400 "Dam must be female"
 
 6. HANDLE RFID tag
-   → SELECT rfid_tag_id, is_active FROM farm.rfid_tag WHERE tag_code = $1
-   -- params: [rfid_tag_code]
-   - If not exists:
-     → INSERT INTO farm.rfid_tag (tag_code, is_active, assigned_at) VALUES ($1, true, NOW()) RETURNING rfid_tag_id
+   → GET /farm/rfid_tag?tag_code=eq.{rfid_tag_code}
+   - If not exists: POST /farm/rfid_tag body: { tag_code, is_active: true, assigned_at: now() }
    - If exists & is_active: check not already assigned to another goat
    - Get rfid_tag_id
 
 7. GET premise_id from logged-in user's profile
-   → SELECT premise_id FROM core.user_profile WHERE user_account_id = $1
-   -- params: [req.user.user_account_id]
+   → GET /core/user_profile?user_account_id=eq.{req.user.user_account_id}&select=premise_id
 
 8. CREATE goat
-   → INSERT INTO farm.goat (goat_id, premise_id, rfid_tag_id, sire_id, dam_id, goat_breed_id, gender, birth_date, weight, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ACTIVE') RETURNING *
-   -- params: [goat_id, premise_id, rfid_tag_id, sire_id, dam_id, goat_breed_id, gender, birth_date, weight]
+   → POST /farm/goat  body: { goat_id, premise_id, rfid_tag_id, sire_id, dam_id, goat_breed_id, gender, birth_date, weight, status: 'ACTIVE' }
 
 9. AUDIT LOG
 
@@ -576,19 +519,17 @@ Image uploaded separately via `POST /api/goats/:id/image` (multipart)
 ```
 1. AUTH + PERMISSION('goat', 'view')
 2. GET user's premise_id (scope goats to their farm)
-3. BUILD SQL query:
-   → SELECT g.*, gb.name AS breed_name
-     FROM farm.goat g
-     LEFT JOIN admin_ref.goat_breed gb ON gb.goat_breed_id = g.goat_breed_id
-     WHERE g.premise_id = $1 AND g.status = 'ACTIVE'
-     ORDER BY g.registered_at DESC
-   - Add filters dynamically: AND g.gender = $2, AND g.goat_breed_id = $3, etc.
-   - Add search: AND g.goat_id ILIKE $N  -- params: ['%search%']
+3. BUILD PostgREST query:
+   → GET /farm/goat?premise_id=eq.{premise_id}&status=eq.ACTIVE&order=registered_at.desc
+   - Add filters: gender, goat_breed_id, birth_date ranges, weight ranges
+   - Add search: &goat_id=ilike.*{search}*
 4. ENRICH response:
    - For each goat, compute age from birth_date:
      - < 31 days → "X days"
      - 31-364 days → "X months"  
      - >= 365 days → "X years"
+   - Join breed name from goat_breed_id
+   → GET /admin_ref/goat_breed?goat_breed_id=in.({unique_ids})
 5. RETURN enriched array
 ```
 
@@ -602,23 +543,18 @@ Image uploaded separately via `POST /api/goats/:id/image` (multipart)
 1. AUTH + PERMISSION('rfid_scan', 'view')
 
 2. FIND RFID tag
-   → SELECT rfid_tag_id FROM farm.rfid_tag WHERE tag_code = $1 AND is_active = true
-   -- params: [tag_code]
+   → GET /farm/rfid_tag?tag_code=eq.{tag_code}&is_active=eq.true
    - If not found → 404 "Unknown RFID tag"
 
 3. FIND goat by rfid_tag_id
-   → SELECT * FROM farm.goat WHERE rfid_tag_id = $1
-   -- params: [rfid_tag_id]
+   → GET /farm/goat?rfid_tag_id=eq.{rfid_tag_id}&select=*
    - If not found → 404 "No goat assigned to this tag"
 
 4. FETCH related data (parallel):
-   → SELECT name FROM admin_ref.goat_breed WHERE goat_breed_id = $1
-   → SELECT health_status FROM farm.health_record WHERE goat_id = $1 ORDER BY recorded_at DESC LIMIT 1
-   → SELECT v.vaccinated_date, v.next_vaccinated_date, vt.name AS vaccine_type_name
-     FROM farm.vaccination v
-     JOIN admin_ref.vaccine_type vt ON vt.vaccine_type_id = v.vaccine_type_id
-     WHERE v.goat_id = $1
-     ORDER BY v.vaccinated_date DESC LIMIT 1
+   → GET /admin_ref/goat_breed?goat_breed_id=eq.{goat.goat_breed_id}
+   → GET /farm/health_record?goat_id=eq.{goat.goat_id}&order=recorded_at.desc&limit=1
+   → GET /farm/vaccination?goat_id=eq.{goat.goat_id}&order=vaccinated_date.desc&limit=1
+   → GET /admin_ref/vaccine_type?vaccine_type_id=eq.{vaccination.vaccine_type_id}
 
 5. COMPUTE age (dynamic from birth_date, per URS display rules)
 
@@ -665,22 +601,16 @@ Image uploaded separately via `POST /api/goats/:id/image` (multipart)
    - slaughter_date: required, valid date
 
 3. CHECK goat exists & is ACTIVE
-   → SELECT 1 FROM farm.goat WHERE goat_id = $1 AND status = 'ACTIVE'
-   -- params: [goat_id]
+   → GET /farm/goat?goat_id=eq.{goat_id}&status=eq.ACTIVE
    - If not found → 400 "Goat not found or already inactive"
 
---- BEGIN TRANSACTION ---
-
 4. CREATE slaughter record
-   → INSERT INTO farm.slaughter (goat_id, weight, sold_amount, buyer_name, slaughter_cost, slaughter_date)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+   → POST /farm/slaughter  body: { goat_id, weight, sold_amount, buyer_name, slaughter_cost, slaughter_date }
 
 5. UPDATE goat status to SLAUGHTERED
-   → UPDATE farm.goat SET status = 'SLAUGHTERED' WHERE goat_id = $1
+   → PATCH /farm/goat?goat_id=eq.{goat_id}  body: { status: 'SLAUGHTERED' }
 
 6. AUDIT LOG
-
---- COMMIT ---
 
 7. RETURN created record
 ```
@@ -716,12 +646,10 @@ Image uploaded separately via `POST /api/goats/:id/image` (multipart)
    - observation: optional text
 
 3. VERIFY goat exists
-   → SELECT 1 FROM farm.goat WHERE goat_id = $1 AND status = 'ACTIVE'
-   -- params: [goat_id]
+   → GET /farm/goat?goat_id=eq.{goat_id}&status=eq.ACTIVE
 
 4. CREATE record
-   → INSERT INTO farm.health_record (goat_id, health_status, treatment, observation)
-     VALUES ($1, $2, $3, $4) RETURNING *
+   → POST /farm/health_record  body: { goat_id, health_status, treatment, observation }
 
 5. AUDIT LOG
 
@@ -759,8 +687,7 @@ Note: `next_vaccinated_date` is NOT sent by frontend — Express calculates it.
    - vaccinated_date: required, valid date
 
 3. FETCH vaccine interval
-   → SELECT interval_days FROM admin_ref.vaccine_type WHERE vaccine_type_id = $1 AND is_active = true
-   -- params: [vaccine_type_id]
+   → GET /admin_ref/vaccine_type?vaccine_type_id=eq.{id}&is_active=eq.true&select=interval_days
    - If not found → 400 "Invalid or inactive vaccine type"
 
 4. COMPUTE next_vaccinated_date
@@ -768,8 +695,7 @@ Note: `next_vaccinated_date` is NOT sent by frontend — Express calculates it.
    (using date-fns or dayjs: addDays(vaccinated_date, interval_days))
 
 5. CREATE vaccination
-   → INSERT INTO farm.vaccination (goat_id, vaccine_type_id, vaccinated_date, next_vaccinated_date)
-     VALUES ($1, $2, $3, $4) RETURNING *
+   → POST /farm/vaccination  body: { goat_id, vaccine_type_id, vaccinated_date, next_vaccinated_date }
 
 6. AUDIT LOG
 
@@ -781,10 +707,7 @@ Note: `next_vaccinated_date` is NOT sent by frontend — Express calculates it.
 ```
 Option A — Cron job (recommended):
   Run daily at 6am:
-  → SELECT v.*, g.goat_id
-    FROM farm.vaccination v
-    JOIN farm.goat g ON g.goat_id = v.goat_id
-    WHERE v.next_vaccinated_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
+  → GET /farm/vaccination?next_vaccinated_date=lte.{today+7days}&next_vaccinated_date=gte.{today}
   For each, find goat's premise owner and send notification.
 
 Option B — On-demand query:
@@ -824,29 +747,25 @@ Note: `pregnancy_check_date` and `expected_birth_date` are NOT sent — Express 
    - breeding_type_id: required
 
 3. VERIFY sire exists, is active, is MALE
-   → SELECT gender FROM farm.goat WHERE goat_id = $1 AND status = 'ACTIVE'
-   -- params: [sire_id]
+   → GET /farm/goat?goat_id=eq.{sire_id}&status=eq.ACTIVE
    - If gender != 'Male' → 400 "Sire must be male"
 
 4. VERIFY each dam exists, is active, is FEMALE
    → For each dam_id:
-     SELECT gender FROM farm.goat WHERE goat_id = $1 AND status = 'ACTIVE'
+     GET /farm/goat?goat_id=eq.{dam_id}&status=eq.ACTIVE
      - If gender != 'Female' → 400 "Dam {dam_id} must be female"
 
 5. VERIFY breeding type exists & is active
-   → SELECT 1 FROM admin_ref.breeding_type WHERE breeding_type_id = $1 AND is_active = true
-   -- params: [breeding_type_id]
+   → GET /admin_ref/breeding_type?breeding_type_id=eq.{id}&is_active=eq.true
 
 6. ★ BREEDING LOGIC — Prevent parent-offspring breeding ★
    For each dam_id:
      a. Check if sire is parent of dam:
-        → SELECT sire_id, dam_id FROM farm.goat WHERE goat_id = $1
-        -- params: [dam_id]
+        → GET /farm/goat?goat_id=eq.{dam_id}&select=sire_id,dam_id
         - If dam.sire_id == sire_id OR dam.dam_id == sire_id → BLOCK
 
      b. Check if dam is parent of sire:
-        → SELECT sire_id, dam_id FROM farm.goat WHERE goat_id = $1
-        -- params: [sire_id]
+        → GET /farm/goat?goat_id=eq.{sire_id}&select=sire_id,dam_id
         - If sire.sire_id == dam_id OR sire.dam_id == dam_id → BLOCK
 
      c. Check if sire is offspring of dam (dam produced sire):
@@ -858,19 +777,15 @@ Note: `pregnancy_check_date` and `expected_birth_date` are NOT sent — Express 
    pregnancy_check_date = program_date + 30 days
    expected_birth_date = program_date + 150 days
 
---- BEGIN TRANSACTION ---
-
 8. CREATE breeding_program
-   → INSERT INTO farm.breeding_program (sire_id, breeding_type_id, program_date, pregnancy_check_date, expected_birth_date)
-     VALUES ($1, $2, $3, $4, $5) RETURNING breeding_program_id
+   → POST /farm/breeding_program  body: { sire_id, breeding_type_id, program_date, pregnancy_check_date, expected_birth_date }
+   - Get back breeding_program_id
 
 9. CREATE breeding_dam entries (one per dam)
    → For each dam_id:
-     INSERT INTO farm.breeding_dam (breeding_program_id, dam_id) VALUES ($1, $2)
+     POST /farm/breeding_dam  body: { breeding_program_id, dam_id }
 
 10. AUDIT LOG
-
---- COMMIT ---
 
 11. RETURN complete record with all dams
 ```
@@ -895,8 +810,7 @@ Note: `pregnancy_check_date` and `expected_birth_date` are NOT sent — Express 
 2. VERIFY breeding_program exists
 3. VERIFY offspring goat exists
 4. CREATE birth certificate
-   → INSERT INTO farm.birth_certificate (breeding_program_id, offspring_goat_id, birth_date)
-     VALUES ($1, $2, $3) RETURNING *
+   → POST /farm/birth_certificate  body: { breeding_program_id, offspring_goat_id, birth_date }
 5. RETURN certificate data (enriched with sire/dam info for display/PDF generation)
 ```
 
@@ -931,8 +845,7 @@ Note: `pregnancy_check_date` and `expected_birth_date` are NOT sent — Express 
    Example: ((50 × 500) / 1000) × 2.50 × (6 × 31) = 25 × 2.50 × 186 = RM 11,625.00
 
 4. SAVE record
-   → INSERT INTO calc.feed_price_calculation (user_account_id, number_of_goats, food_per_goat_grams, price_per_kg, total_months, total_cost)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+   → POST /calc/feed_price_calculation  body: { user_account_id, number_of_goats, food_per_goat_grams, price_per_kg, total_months, total_cost }
 
 5. RETURN { ...inputs, total_cost: 11625.00 }
 ```
@@ -971,10 +884,9 @@ Note: `pregnancy_check_date` and `expected_birth_date` are NOT sent — Express 
 1. AUTH + PERMISSION('feed_calculator', 'create')
 
 2. IF mode == "all":
-   → SELECT COUNT(*) AS count, AVG(weight) AS avg_weight
-     FROM farm.goat
-     WHERE status = 'ACTIVE' AND premise_id = $1
-   -- params: [user's premise_id]
+   → GET /farm/goat?status=eq.ACTIVE&premise_id=eq.{user's premise}&select=weight
+   - Count = number of results
+   - avg_weight = sum(weights) / count
    - Set number_of_goats = count, avg_goat_weight = avg_weight
 
 3. VALIDATE
@@ -997,8 +909,7 @@ Note: `pregnancy_check_date` and `expected_birth_date` are NOT sent — Express 
    concentrate = number_of_goats × dmi × 0.2
 
 6. SAVE record
-   → INSERT INTO calc.feed_calculation (user_account_id, number_of_goats, avg_goat_weight, stage, hay_usage, dmi, fresh_fodder, hay, concentrate)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *
+   → POST /calc/feed_calculation  body: { user_account_id, number_of_goats, avg_goat_weight, stage, hay_usage, dmi, fresh_fodder, hay, concentrate }
 
 7. RETURN all inputs + computed outputs
 ```
@@ -1018,22 +929,24 @@ Note: `pregnancy_check_date` and `expected_birth_date` are NOT sent — Express 
 
 2. PARALLEL QUERIES:
    a. Total registered premises:
-      → SELECT COUNT(*) FROM core.premise WHERE status = 'ACTIVE'
+      → GET /core/premise?select=count&status=eq.ACTIVE
+      With header: Prefer: count=exact
 
    b. Premises by state:
-      → SELECT state, COUNT(*) AS count FROM core.premise WHERE status = 'ACTIVE' GROUP BY state
+      → GET /core/premise?select=state&status=eq.ACTIVE
+      Group in Express code by state
 
    c. Premises by district:
-      → SELECT state, district, COUNT(*) AS count FROM core.premise WHERE status = 'ACTIVE' GROUP BY state, district
+      → GET /core/premise?select=district,state&status=eq.ACTIVE
 
    d. Total users:
-      → SELECT COUNT(*) FROM auth.user_account WHERE status = 'ACTIVE'
+      → GET /auth/user_account?select=count&status=eq.ACTIVE
 
    e. If premise_id filter:
-      → Add WHERE premise_id = $1 to goat/user queries
+      → Scope all queries with premise_id=eq.{id}
 
    f. If ic_number filter:
-      → SELECT premise_id FROM core.user_profile WHERE ic_or_passport = $1
+      → GET /core/user_profile?ic_or_passport=eq.{ic}&select=premise_id
       → Scope all queries with that premise_id
 
 3. RETURN aggregated metrics
@@ -1047,32 +960,12 @@ Note: `pregnancy_check_date` and `expected_birth_date` are NOT sent — Express 
 1. AUTH
 2. GET user's premise_id
 3. PARALLEL QUERIES (scoped to premise):
-   a. Total farmers:
-      → SELECT COUNT(*) FROM core.user_profile WHERE premise_id = $1
-
-   b. Goats by gender:
-      → SELECT gender, COUNT(*) AS count FROM farm.goat WHERE premise_id = $1 AND status = 'ACTIVE' GROUP BY gender
-
-   c. Goats by breed:
-      → SELECT gb.name AS breed_name, COUNT(*) AS count
-        FROM farm.goat g
-        JOIN admin_ref.goat_breed gb ON gb.goat_breed_id = g.goat_breed_id
-        WHERE g.premise_id = $1 AND g.status = 'ACTIVE'
-        GROUP BY gb.name
-
+   a. Total farmers: GET /core/user_profile?premise_id=eq.{id}&select=count
+   b. Goats by gender: GET /farm/goat?premise_id=eq.{id}&status=eq.ACTIVE&select=gender
+      → Group: { male: X, female: Y }
+   c. Goats by breed: GET /farm/goat?premise_id=eq.{id}&status=eq.ACTIVE&select=goat_breed_id
+      → Join breed names, group: { Boer: X, Katjang: Y }
 4. RETURN metrics
-```
-
----
-
-## PROJECT ROOT DIRECTORY MAP
-
-```
-project-root/
-├── docs/       ← All documentation (BLL.md, CSV, DevLog, Coding Standards)
-├── frontend/   ← React + Vite frontend
-├── api/        ← Express API (this document's code goes here)
-└── database/   ← Database backups & schema exports
 ```
 
 ---
@@ -1080,9 +973,9 @@ project-root/
 ## PART 4: EXPRESS PROJECT STRUCTURE
 
 ```
-api/
+goat-rfid-api/
 ├── package.json
-├── .env                          # JWT_SECRET, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, SMTP settings
+├── .env                          # JWT_SECRET, POSTGREST_URL, SMTP settings
 ├── src/
 │   ├── index.js                  # Express app entry point
 │   ├── config/
@@ -1117,7 +1010,7 @@ api/
 │   │   ├── dashboard.service.js  # Dashboard aggregation
 │   │   └── audit.service.js      # Audit log helper
 │   ├── utils/
-│   │   ├── db.js                 # PostgreSQL connection pool (data access layer)
+│   │   ├── postgrest.js          # HTTP client wrapper for PostgREST
 │   │   ├── password.js           # bcrypt hash/compare helpers
 │   │   ├── otp.js                # OTP generation
 │   │   ├── age.js                # Age calculation (days/months/years)
@@ -1140,7 +1033,7 @@ api/
     "bcryptjs": "^2.4",         // Password hashing
     "jsonwebtoken": "^9.0",     // JWT
     "joi": "^17.0",             // Input validation (or use zod)
-    "pg": "^8.11",              // PostgreSQL client (data access layer)
+    "axios": "^1.6",            // HTTP client for PostgREST calls
     "multer": "^1.4",           // File uploads
     "nodemailer": "^6.9",       // Email sending
     "date-fns": "^3.0",         // Date math (addDays, differenceInDays)
@@ -1153,122 +1046,52 @@ api/
 
 ---
 
-## PART 5: PostgreSQL DATA ACCESS LAYER
+## PART 5: PostgREST CLIENT UTILITY
 
 This is how Express talks to your database. Every service uses this.
 
-**Rule:** Never hardcode connection details. Always use environment variables.
+**Rule:** Never hardcode the URL. Always use environment variable.
 
 ```javascript
-// src/utils/db.js
-const { Pool } = require('pg');
+// src/utils/postgrest.js
+const axios = require('axios');
+const POSTGREST_URL = process.env.POSTGREST_URL || 'https://raspberrypi.tail08c084.ts.net:10000';
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 5432,
-  database: process.env.DB_NAME || 'postgres',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'raspberry_123',
-  max: 20,                    // max connections in pool
-  idleTimeoutMillis: 30000,   // close idle connections after 30s
-});
+const client = axios.create({ baseURL: POSTGREST_URL });
 
 module.exports = {
-  /**
-   * Run a query and return all rows.
-   * Always use parameterized queries ($1, $2...) to prevent SQL injection.
-   */
-  async query(text, params = []) {
-    const result = await pool.query(text, params);
-    return result.rows;
+  // GET with filters
+  async get(schema, table, params = {}, headers = {}) {
+    const res = await client.get(`/${schema}/${table}`, { params, headers });
+    return res.data;
   },
 
-  /**
-   * Run a query and return the first row, or null if no results.
-   */
-  async queryOne(text, params = []) {
-    const result = await pool.query(text, params);
-    return result.rows[0] || null;
+  // POST (create)
+  async create(schema, table, body) {
+    const res = await client.post(`/${schema}/${table}`, body, {
+      headers: { Prefer: 'return=representation' }
+    });
+    return res.data;
   },
 
-  /**
-   * Get a dedicated client for transactions.
-   * Caller MUST call client.release() when done.
-   *
-   * Usage:
-   *   const client = await db.getClient();
-   *   try {
-   *     await client.query('BEGIN');
-   *     await client.query('INSERT INTO ...', [...]);
-   *     await client.query('INSERT INTO ...', [...]);
-   *     await client.query('COMMIT');
-   *   } catch (e) {
-   *     await client.query('ROLLBACK');
-   *     throw e;
-   *   } finally {
-   *     client.release();
-   *   }
-   */
-  async getClient() {
-    return await pool.connect();
+  // PATCH (update) with filter
+  async update(schema, table, filter, body) {
+    const res = await client.patch(`/${schema}/${table}?${filter}`, body, {
+      headers: { Prefer: 'return=representation' }
+    });
+    return res.data;
   },
 
-  // Expose pool for graceful shutdown: pool.end()
-  pool,
+  // DELETE with filter
+  async remove(schema, table, filter) {
+    await client.delete(`/${schema}/${table}?${filter}`);
+  }
 };
 
-// ─── Usage Examples ───────────────────────────────────────────
-// const db = require('../utils/db');
-//
-// Single query:
-//   const users = await db.query('SELECT * FROM auth.user_account WHERE email = $1', ['farmer@email.com']);
-//
-// Single row:
-//   const user = await db.queryOne('SELECT * FROM auth.user_account WHERE user_account_id = $1', [1]);
-//
-// Insert with RETURNING:
-//   const [newGoat] = await db.query(
-//     'INSERT INTO farm.goat (goat_id, gender, weight) VALUES ($1, $2, $3) RETURNING *',
-//     ['G005', 'Female', 28.5]
-//   );
-//
-// Transaction (multi-step that must all succeed):
-//   const client = await db.getClient();
-//   try {
-//     await client.query('BEGIN');
-//     const { rows: [account] } = await client.query(
-//       'INSERT INTO auth.user_account (email, password_hash, status) VALUES ($1, $2, $3) RETURNING user_account_id',
-//       [email, hash, 'ACTIVE']
-//     );
-//     await client.query(
-//       'INSERT INTO core.user_profile (user_account_id, full_name) VALUES ($1, $2)',
-//       [account.user_account_id, fullName]
-//     );
-//     await client.query('COMMIT');
-//   } catch (e) {
-//     await client.query('ROLLBACK');
-//     throw e;
-//   } finally {
-//     client.release();
-//   }
+// Usage example:
+// const goats = await postgrest.get('farm', 'goat', { premise_id: 'eq.1', status: 'eq.ACTIVE' });
+// const newGoat = await postgrest.create('farm', 'goat', { goat_id: 'G010', gender: 'Male', ... });
 ```
-
-**Environment variables (.env file):**
-
-```
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=postgres
-DB_USER=postgres
-DB_PASSWORD=raspberry_123
-JWT_SECRET=your-secret-here
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-```
-
-**Note for Raspberry Pi deployment:** If Express runs inside Docker, use `DB_HOST=postgres` (the Docker container name). If Express runs directly on the Pi, use `DB_HOST=localhost`.
 
 ---
 
@@ -1278,7 +1101,7 @@ SMTP_PASS=your-app-password
 
 |#|Gap|Where|Decision Needed|
 |---|---|---|---|
-|1|**No `rfid_scan_history` table**|URS 2.2.3 says display scan history — your Excel has an "RFID Scanner History" sheet but no DB table|Add table? Or use sensor_data?|
+|1|**No `rfid_scan_history` table** in PostgREST|URS 2.2.3 says display scan history — your Excel has an "RFID Scanner History" sheet but no DB table|Add table? Or use sensor_data?|
 |2|**Goat `status` values** not enumerated|farm.goat.status is varchar(20)|Define enum: ACTIVE, SLAUGHTERED, SOLD, DEAD, RETIRED|
 |3|**File storage strategy**|URS requires document uploads + goat images|Local disk? AWS S3? Need to decide|
 |4|**OTP delivery**|URS says email + SMS/WhatsApp|Email = nodemailer/SendGrid. SMS = Twilio? WhatsApp Business API? Budget?|
@@ -1301,7 +1124,7 @@ Build in this order to get a working system fastest:
 
 ```
 WEEK 1: Foundation
-├── Day 1: Express project setup + PostgreSQL connection (db.js)
+├── Day 1: Express project setup + PostgREST client utility
 ├── Day 2: Auth (login, JWT, middleware) — UNBLOCKS EVERYTHING
 ├── Day 3: RBAC middleware + seed roles/permissions
 ├── Day 4: Admin reference CRUD (vaccine_type, breeding_type, goat_breed)
@@ -1331,7 +1154,7 @@ WEEK 4: Polish
 
 ## PART 8: COMPLETE EXPRESS ENDPOINT REFERENCE
 
-| Method | Express Route                                | URS Ref      | Database Tables Used                                                                                                         |
+| Method | Express Route                                | URS Ref      | PostgREST Tables Hit                                                                                                         |
 | ------ | -------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
 | POST   | /api/auth/login                              | 2.1.1, 2.2.1 | auth.user_account, auth.login_attempt, rbac.user_role, rbac.role_permission, rbac.permission, core.user_profile              |
 | POST   | /api/auth/forgot-password                    | 2.1.1, 2.2.1 | auth.user_account, auth.otp, notify.notification                                                                             |
@@ -1394,4 +1217,4 @@ WEEK 4: Polish
 
 **Total: 42 Express endpoints covering all 11 URS functional modules + 2 dashboards.**
 
-This document is your contract. Frontend builds to the request/response shapes. Backend implements the logic. Express connects to PostgreSQL directly via the `pg` library. No guessing.
+This document is your contract. Frontend builds to the request/response shapes. Backend implements the logic. PostgREST is the database interface. No guessing.

@@ -13,8 +13,8 @@ This file is the handoff document between coding sessions. AI writes here, human
 
 ## Current Session
 
-**Date:** 2026-02-08
-**Working on:** Login Page & Forgot Password Flow (Frontend - SESSION 1)
+**Date:** 2026-02-10
+**Working on:** Authentication API (Backend - SESSION 2)
 
 ---
 
@@ -48,18 +48,18 @@ Update these in `Frontend_Component_Mapping.csv` after confirmation:
 
 | Comp_ID | UI_Ready | API_Ready | DB_Verified | Notes |
 |---------|:--------:|:---------:|:-----------:|-------|
-| LOGIN-001 | ✓ | | | Email/Phone input - fully functional |
-| LOGIN-002 | ✓ | | | Password input with show/hide toggle |
-| LOGIN-003 | ✓ | | | Login button with loading state |
-| LOGIN-004 | ✓ | | | Forgot password navigation link |
-| LOGIN-005 | ✓ | | | Error message display for login failures |
-| FORGOT-001 | ✓ | | | Email input field |
-| FORGOT-002 | ✓ | | | Send OTP button |
-| FORGOT-003 | ✓ | | | OTP input (6 digits) |
-| FORGOT-004 | ✓ | | | "Use Different Email" button |
-| FORGOT-005 | ✓ | | | New password input with validation hint |
-| FORGOT-006 | ✓ | | | Confirm password input |
-| FORGOT-007 | ✓ | | | Reset password button with redirect to login |
+| LOGIN-001 | Done | Done | | Email/Phone input - fully functional |
+| LOGIN-002 | Done | Done | | Password input with show/hide toggle |
+| LOGIN-003 | Done | Done | | Login button - calls POST /api/auth/login |
+| LOGIN-004 | Done | Done | | Forgot password navigation link |
+| LOGIN-005 | Done | Done | | Error message display (401/403/423) |
+| FORGOT-001 | Done | Done | | Email input field |
+| FORGOT-002 | Done | Done | | Send OTP - calls POST /api/auth/forgot-password |
+| FORGOT-003 | Done | Done | | OTP input (6 digits) |
+| FORGOT-004 | Done | Done | | "Use Different Email" button |
+| FORGOT-005 | Done | Done | | New password input - broadened special char validation |
+| FORGOT-006 | Done | Done | | Confirm password input |
+| FORGOT-007 | Done | Done | | Reset password - calls POST /api/auth/reset-password |
 
 **How to mark:** ✓ = Done, empty = Not done
 
@@ -80,11 +80,8 @@ Changes to apply to `Frontend_Component_Mapping.csv`:
 
 ```
 UPDATE all LOGIN and FORGOT components (LOGIN-001 to LOGIN-005, FORGOT-001 to FORGOT-007):
-- Set UI_Ready = ✓ for all 12 components listed above
-- API_Ready remains empty (waiting for SESSION 2)
+- Set API_Ready = Done for all 12 components
 - DB_Verified remains empty (waiting for SESSION 3)
-
-No new components added - all components were pre-defined in CSV.
 ```
 
 ---
@@ -93,39 +90,36 @@ No new components added - all components were pre-defined in CSV.
 
 **Status:** ✅ NO CHANGES NEEDED
 
-Changes to apply to `Backend_Business_Logic.md`:
-
 ```
-No changes needed. All required API endpoints are already documented:
-- POST /api/auth/login (lines 18-91)
-- POST /api/auth/forgot-password (lines 97-128)
-- POST /api/auth/reset-password (lines 131-175)
-
-Frontend successfully implements against these specifications.
+All 3 auth endpoints implemented exactly per BLL.md specification:
+- POST /api/auth/login (11-step flow per lines 18-91)
+- POST /api/auth/forgot-password (5-step flow per lines 97-128)
+- POST /api/auth/reset-password (9-step flow per lines 131-175)
+- Auth middleware per lines 179-189
+- Permission middleware per lines 191-200
+No deviations from spec.
 ```
 
 ---
 
 ## Database Changes Needed
 
-**Status:** ✅ NO CHANGES NEEDED
+**Status:** ⏳ VERIFY IN SESSION 3
 
-Tables/columns to add in pgAdmin:
+Tables the API endpoints hit (must exist in pgAdmin):
 
 ```
-No database changes needed for SESSION 1.
-All required tables are already defined in database schema:
-- auth.user_account
-- auth.login_attempt
-- auth.otp
-- rbac.user_role
-- rbac.role_permission
-- rbac.permission
-- core.user_profile
-- notify.notification
-- audit.audit_log
-
-SESSION 2 (API Dev) and SESSION 3 (Database) will verify these tables exist.
+Required for auth endpoints:
+- auth.user_account (login, password reset)
+- auth.login_attempt (login audit trail)
+- auth.otp (forgot/reset password)
+- rbac.user_role (login - fetch role)
+- rbac.role (login - role name)
+- rbac.role_permission (login - permissions)
+- rbac.permission (login - module+action)
+- core.user_profile (login - user details)
+- notify.notification (forgot password - OTP notification log)
+- audit.audit_log (password reset audit)
 ```
 
 ---
@@ -140,57 +134,27 @@ SESSION 2 (API Dev) and SESSION 3 (Database) will verify these tables exist.
 
 ## Questions for Human
 
-1. ❓ Should we add a "Remember Me" checkbox to LOGIN page? (Not in CSV currently)
-2. ❓ Do you want to add email/SMS notification mock in mockApi.js to simulate OTP delivery?
-3. ❓ Should we create placeholder dashboard pages (/dashboard, /admin/dashboard) for login redirect testing?
+1. ❓ Test the API: `cd api && npm run dev` then use curl/Postman to hit endpoints
+2. ❓ Verify PostgREST connectivity: Does the API connect to https://raspberrypi.tail08c084.ts.net:10000?
+3. ❓ Replace frontend mock API with real API calls? (frontend/src/utils/mockApi.js → api.js)
+4. ❓ Consider swapping mock→real API calls after each full SESSION 1→2→3 cycle, rather than deferring all integration to the end. User to formalize this workflow in BLL.md.
 
 ---
 
 ## Next Session Should
 
-**SESSION 2 - Backend API Development:**
-
-1. **Set up Express project structure** per Backend_Business_Logic.md (lines 975-1023)
-   - Install npm packages: express, cors, helmet, bcryptjs, jsonwebtoken, joi, axios, multer, nodemailer, date-fns, node-cron, morgan, dotenv
-   - Create folder structure: src/config, src/middleware, src/routes, src/services, src/utils, src/constants
-
-2. **Implement authentication endpoints**:
-   - POST /api/auth/login (implement business logic lines 18-91)
-   - POST /api/auth/forgot-password (implement business logic lines 97-128)
-   - POST /api/auth/reset-password (implement business logic lines 131-175)
-
-3. **Create middleware**:
-   - auth.js (JWT verification per lines 179-189)
-   - permission.js (RBAC per lines 191-200)
-   - errorHandler.js (global error handling)
-
-4. **Create PostgREST client utility** per lines 1049-1093
-   - Connects to https://raspberrypi.tail08c084.ts.net:10000
-   - Provides get(), create(), update(), remove() methods
-
-5. **Test endpoints** using Postman/Insomnia:
-   - Test login with farmer1@email.com / MyP@ssw0rd
-   - Test inactive account (admin@email.com)
-   - Test forgot password flow
-   - Verify JWT token generation
-   - Verify bcrypt password hashing
-
-6. **Update Development_Log.md** with:
-   - Mark LOGIN-001 to LOGIN-005 as API_Ready: ✓
-   - Mark FORGOT-001 to FORGOT-007 as API_Ready: ✓
-   - Note any business logic changes made during implementation
-
-7. **Replace frontend mock API** with real axios calls:
-   - Update src/utils/mockApi.js → src/utils/api.js
-   - Point to http://localhost:3000/api endpoints
-
 **SESSION 3 - Database Verification:**
 
 1. Connect to PostgreSQL database via pgAdmin
-2. Verify tables exist: auth.user_account, auth.otp, auth.login_attempt, rbac.*, core.*, audit.audit_log, notify.notification
-3. Seed test data if needed (test users, roles, permissions)
-4. Export updated schema to database/schema_export.sql
-5. Update CSV: Mark all LOGIN/FORGOT components as DB_Verified: ✓
+2. Verify these tables exist and have correct columns:
+   - auth.user_account, auth.login_attempt, auth.otp
+   - rbac.user_role, rbac.role, rbac.role_permission, rbac.permission
+   - core.user_profile
+   - notify.notification
+   - audit.audit_log
+3. Seed test data (test user with hashed password, roles, permissions)
+4. Test end-to-end: Frontend → Express → PostgREST → PostgreSQL
+5. Update CSV: Mark all LOGIN/FORGOT components as DB_Verified: Done
 6. Clear Development_Log.md for next feature
 
 ---
@@ -199,7 +163,8 @@ SESSION 2 (API Dev) and SESSION 3 (Database) will verify these tables exist.
 
 | Date | Item | Confirmed By | Applied To |
 |------|------|--------------|------------|
-| 2026-02-08 | SESSION 1: Login & Forgot Password Frontend | ⏳ PENDING | Frontend_Component_Mapping.csv |
+| 2026-02-08 | SESSION 1: Login & Forgot Password Frontend | Human | Frontend_Component_Mapping.csv |
+| 2026-02-10 | SESSION 2: Authentication Backend API | ⏳ PENDING | Frontend_Component_Mapping.csv |
 
 ---
 
