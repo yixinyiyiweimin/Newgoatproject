@@ -1,87 +1,118 @@
 # Newgoatproject
-This repository is for Version control (Git History), Progress tracing (Frontend_Component_Mapping.xslx) and Info aggregation (Better README to be drafted)
+
+This repository is for Version Control (Git History), Progress Tracing (Frontend_Component_Mapping.csv) and Info Aggregation.
 
 ---
 
-# Folder Structure
+## Three Truth Files
+
+Every coding session must reference these. If any two disagree, fix the discrepancy BEFORE writing code.
+
+| File | Source of Truth For | AI Reads Before |
+|------|--------------------|-----------------| 
+| `docs/Backend_Business_Logic.md` | What the API should do (endpoints, logic, request/response shapes) | Session 2 (API Dev) |
+| `docs/Frontend_Component_Mapping.csv` | What the UI shows (components, status tracking) | Session 1 (Frontend Dev) |
+| `docs/Database_Data_Dictionary.md` | What the database actually contains (tables, columns, types, FKs) | Session 2 (API Dev), Session 3 (DB) |
+
+**Supporting files:**
+
+| File | Purpose |
+|------|---------|
+| `docs/Frontend_Coding_Standards.md` | Rules for writing tagged React code |
+| `docs/Development_Log.md` | Session handoff (temporary, cleared after confirmation) |
+| `database/schema_export.csv` | Raw PostgreSQL export (source data for Data Dictionary) |
+| `database/export_v1.txt` | SQL query to regenerate schema_export.csv |
+
+---
+
+## Folder Structure
+
 ```
 /project-root
-    ├── Code_To_Excel_Extraction.md     ← Use AI to sync Excel
-    ├──Development_Log_History.md.md    ← Teamwork reference
-  /docs
-    ├── Backend_Business_Logic.md      ← This is the Design intent
-    ├── Frontend_Component_Mapping.xlsx ← Using Code_To_Excel_Extraction.md to extract updates from code
-    ├── Frontend_Coding_Standards.md    ← AI reads before coding
-    └── Development_Log.md              ← Session handoff
-  
-  /frontend
-    └── (React code with @component tags)
-  
-  /api
-    └── (Express code)
-  
-  /database
-    └── schema_export.sql
+├── README.md                           ← YOU ARE HERE
+├── Code_To_Excel_Extraction.md         ← Use AI to sync CSV from code
+├── Development_Log_History.md          ← Completed session archive
+│
+├── /docs
+│   ├── Backend_Business_Logic.md       ← Truth File 1: API contract
+│   ├── Frontend_Component_Mapping.csv  ← Truth File 2: UI components + progress
+│   ├── Database_Data_Dictionary.md     ← Truth File 3: Actual DB schema
+│   ├── Frontend_Coding_Standards.md    ← Rules for writing tagged code
+│   └── Development_Log.md             ← Session handoff (temporary)
+│
+├── /frontend                           ← React code with @component tags
+│   └── /src
+│
+├── /api                                ← Express code
+│   └── /src
+│
+├── /database
+│   ├── schema_export.csv               ← Raw pgAdmin export
+│   └── export_v1.txt                   ← SQL query to regenerate export
+│
+└── /hardware                           ← Hardware team's domain (hands off)
 ```
+
 ---
-## Reminder
 
-When you start a coding session with any AI, paste this at the beginning:
+## Session Workflow
 
-```
-Read these files before coding:
-- /docs/Backend_Business_Logic.md
-- /docs/Frontend_Component_Mapping.xlsx  
-- /docs/Frontend_Coding_Standards.md
-- /docs/Development_Log.md
-
-Follow the rules in Frontend_Coding_Standards.md exactly.
-Write all proposed changes to Development_Log.md.
-Do not modify Backend_Business_Logic.md or Frontend_Component_Mapping.xlsx directly.
-```
-From Development_Log
-```
-SESSION START
-    ↓
-Human: "Today we're building the vaccination page"
-    ↓
-AI: Reads Backend_Business_Logic.md, Frontend_Component_Mapping.xlsx
-    ↓
-AI: Codes components with @component tags
-    ↓
-AI: Logs new/modified/deleted components HERE
-    ↓
-SESSION END
-    ↓
-Human: Reviews this file
-    ↓
-Human: "Confirmed, update master docs"
-    ↓
-AI: Updates Excel and/or Business Logic
-    ↓
-Human: Moves confirmed items to History file
-    ↓
-NEXT SESSION
-```
-From D16.1
 ```
 SESSION 1: Frontend Dev
-├── AI reads: BLL.md, cvs, DevLog, Coding_Standards 
-├── AI writes: React code (with tags)
-├── AI writes: DEVLOG.md "Added U-GOAT-016, needs POST /api/goats"
-└── Human: Verify, then confirm "update cvs"
+├── AI reads: BLL.md, CSV, DataDictionary, DevLog, Coding_Standards
+├── AI writes: React code (with @component tags)
+├── AI writes: DevLog "Added U-GOAT-016, needs POST /api/goats"
+└── Human: Verify, then confirm "update CSV"
 
-SESSION 2: API Dev  
-├── AI reads: BLL.md, cvs, DevLog                    
-├── AI writes: Express code
-├── AI writes: DEVLOG.md "Implemented POST /api/goats"
+SESSION 2: API Dev
+├── AI reads: BLL.md, CSV, DataDictionary, DevLog
+├── AI writes: Express code (using ACTUAL column names from DataDictionary)
+├── AI writes: DevLog "Implemented POST /api/goats"
 └── Human: Verify, then confirm "update BLL if logic changed"
 
 SESSION 3: Database
-├── AI reads: DevLog                                   
-├── Human: Update pgAdmin
-├── Export: schema_export.sql
-└── Human: Update cvs checkboxes, clear DevLog
+├── AI reads: DevLog, DataDictionary
+├── Human: Make changes in pgAdmin
+├── Human: Re-run export_v1.txt → schema_export.csv
+├── Human: Update Database_Data_Dictionary.md
+├── Human: Update CSV checkboxes (DB_Verified)
+└── Human: Move completed items to Development_Log_History.md
 ```
 
+**Critical Rule:** If Session 2 (API Dev) needs a column that doesn't exist in the Data Dictionary, the AI must log it in DevLog as a proposed DB change — NOT guess the column name. The change happens in Session 3.
 
+---
+
+## When Starting a Coding Session with AI
+
+Paste this at the beginning:
+
+```
+Read these files before coding:
+- /docs/Backend_Business_Logic.md        (API contract)
+- /docs/Database_Data_Dictionary.md      (actual DB schema — use THESE column names)
+- /docs/Frontend_Component_Mapping.csv   (component inventory + progress)
+- /docs/Frontend_Coding_Standards.md     (coding rules)
+- /docs/Development_Log.md              (pending work)
+
+Rules:
+- Use column names from Database_Data_Dictionary.md, NOT from BLL.md if they differ
+- Follow Frontend_Coding_Standards.md exactly
+- Write all proposed changes to Development_Log.md
+- Do not modify BLL, CSV, or Data Dictionary directly — propose changes in DevLog
+```
+
+---
+
+## Document Update Order
+
+When making changes, always update docs BEFORE coding:
+
+```
+1. Propose change in Development_Log.md
+2. Human confirms
+3. Update the relevant truth file(s)
+4. THEN write/modify code
+```
+
+Never implement plans without updating docs first. This prevents document drift.
