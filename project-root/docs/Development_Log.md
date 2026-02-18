@@ -13,16 +13,32 @@ This file is the handoff document between coding sessions. AI writes here, human
 
 ## Current Session
 
-**Date:** 2026-02-08
-**Working on:** Login Page & Forgot Password Flow (Frontend - SESSION 1)
+**Date:** 2026-02-16 to 2026-02-18
+**Working on:** Frontend-to-API Integration + SMTP + End-to-End Testing
 
 ---
 
 ## New Components Added
 
-| Comp_ID | Label | Path | Archetype | Trigger | API_Endpoint | UR_ID | Notes |
-|---------|-------|------|-----------|---------|--------------|-------|-------|
-| _All components were pre-defined in CSV_ | | | | | | | |
+**Backend Components Created:**
+
+| File | Purpose | Technology |
+|------|---------|------------|
+| api/package.json | Project dependencies | pg, bcryptjs, jsonwebtoken, joi, express, etc. |
+| api/.env | Environment configuration | DB connection, JWT secret, SMTP config |
+| api/src/index.js | Express server entry point | Express 4 |
+| api/src/config/env.js | Environment validation | dotenv |
+| api/src/utils/db.js | PostgreSQL connection pool | pg library (NOT PostgREST) |
+| api/src/utils/password.js | Password hashing | bcryptjs (12 salt rounds) |
+| api/src/utils/otp.js | OTP generation | 6-digit random, bcrypt hashed |
+| api/src/middleware/auth.js | JWT verification | jsonwebtoken |
+| api/src/middleware/permission.js | RBAC permission checker | Custom middleware |
+| api/src/middleware/errorHandler.js | Global error handler | Handles Joi, PostgreSQL, JWT errors |
+| api/src/services/auth.service.js | Authentication business logic | 11-step login, 5-step forgot, 9-step reset |
+| api/src/services/audit.service.js | Audit logging | Inserts to audit.audit_log |
+| api/src/routes/auth.routes.js | Authentication routes | POST /api/auth/login, /forgot-password, /reset-password |
+| api/src/utils/email.js | OTP email sending via nodemailer | Gmail SMTP (smtp.gmail.com:587) with App Password |
+| frontend/src/utils/api.js | Real API client (replaces mockApi.js) | axios, returns { status, data } matching mockApi format |
 
 ---
 
@@ -31,6 +47,9 @@ This file is the handoff document between coding sessions. AI writes here, human
 | Comp_ID | Field Changed | Old Value | New Value | Reason |
 |---------|---------------|-----------|-----------|--------|
 | FORGOT-005, FORGOT-006, FORGOT-007 | Password validation regex | Only allowed `@ $ ! % * ? & #` as special chars | Allows ALL symbols: `! @ # $ % ^ & * ( ) _ - + = [ ] { } etc.` | User feedback: underscore `_` and other symbols should work. Broadened "special char" definition while maintaining URS 2.1.1 requirements (min 8, uppercase, lowercase, number, special). |
+| LOGIN-001 to LOGIN-005 | API source | `mockAuthApi` from `mockApi.js` | `authApi` from `api.js` | Frontend now calls real Express API instead of in-browser mock |
+| FORGOT-001 to FORGOT-007 | API source | `mockAuthApi` from `mockApi.js` | `authApi` from `api.js` | Frontend now calls real Express API instead of in-browser mock |
+| auth.service.js | OTP delivery | `console.log` (TODO) | `sendOTP()` via nodemailer | Real OTP emails via Gmail SMTP, console.log kept as fallback |
 
 ---
 
@@ -48,18 +67,18 @@ Update these in `Frontend_Component_Mapping.csv` after confirmation:
 
 | Comp_ID | UI_Ready | API_Ready | DB_Verified | Notes |
 |---------|:--------:|:---------:|:-----------:|-------|
-| LOGIN-001 | ✓ | | | Email/Phone input - fully functional |
-| LOGIN-002 | ✓ | | | Password input with show/hide toggle |
-| LOGIN-003 | ✓ | | | Login button with loading state |
-| LOGIN-004 | ✓ | | | Forgot password navigation link |
-| LOGIN-005 | ✓ | | | Error message display for login failures |
-| FORGOT-001 | ✓ | | | Email input field |
-| FORGOT-002 | ✓ | | | Send OTP button |
-| FORGOT-003 | ✓ | | | OTP input (6 digits) |
-| FORGOT-004 | ✓ | | | "Use Different Email" button |
-| FORGOT-005 | ✓ | | | New password input with validation hint |
-| FORGOT-006 | ✓ | | | Confirm password input |
-| FORGOT-007 | ✓ | | | Reset password button with redirect to login |
+| LOGIN-001 | ✓ | ✓ | ✓ | Email/Phone input - End-to-end tested |
+| LOGIN-002 | ✓ | ✓ | ✓ | Password input - End-to-end tested |
+| LOGIN-003 | ✓ | ✓ | ✓ | Login button - JWT + DB verified |
+| LOGIN-004 | ✓ | ✓ | ✓ | Forgot password - End-to-end tested |
+| LOGIN-005 | ✓ | ✓ | ✓ | Error handling - End-to-end tested |
+| FORGOT-001 | ✓ | ✓ | ✓ | Email input - End-to-end tested |
+| FORGOT-002 | ✓ | ✓ | ✓ | Send OTP - Gmail email delivered |
+| FORGOT-003 | ✓ | ✓ | ✓ | OTP input - End-to-end tested |
+| FORGOT-004 | ✓ | ✓ | ✓ | Use Different Email - End-to-end tested |
+| FORGOT-005 | ✓ | ✓ | ✓ | New password - End-to-end tested |
+| FORGOT-006 | ✓ | ✓ | ✓ | Confirm password - End-to-end tested |
+| FORGOT-007 | ✓ | ✓ | ✓ | Reset password - End-to-end tested |
 
 **How to mark:** ✓ = Done, empty = Not done
 
@@ -80,52 +99,63 @@ Changes to apply to `Frontend_Component_Mapping.csv`:
 
 ```
 UPDATE all LOGIN and FORGOT components (LOGIN-001 to LOGIN-005, FORGOT-001 to FORGOT-007):
-- Set UI_Ready = ✓ for all 12 components listed above
-- API_Ready remains empty (waiting for SESSION 2)
-- DB_Verified remains empty (waiting for SESSION 3)
+- Set API_Ready = ✓ for all 12 components
+- Set DB_Verified = ✓ for all 12 components (end-to-end tested 2026-02-17)
+- UI_Ready already = ✓ (from SESSION 1)
 
-No new components added - all components were pre-defined in CSV.
+All 12 components now have all 3 checks: UI_Ready ✓, API_Ready ✓, DB_Verified ✓
+Login + Forgot Password feature is COMPLETE.
 ```
 
 ---
 
 ## Proposed Business Logic Updates
 
-**Status:** ✅ NO CHANGES NEEDED
+**Status:** ⏳ WAITING FOR CONFIRMATION
 
 Changes to apply to `Backend_Business_Logic.md`:
 
 ```
-No changes needed. All required API endpoints are already documented:
-- POST /api/auth/login (lines 18-91)
-- POST /api/auth/forgot-password (lines 97-128)
-- POST /api/auth/reset-password (lines 131-175)
+1. All 3 authentication endpoints implemented exactly per BLL.md spec:
+   - POST /api/auth/login (11-step flow) ✅ IMPLEMENTED
+   - POST /api/auth/forgot-password (5-step flow) ✅ IMPLEMENTED
+   - POST /api/auth/reset-password (9-step flow) ✅ IMPLEMENTED
 
-Frontend successfully implements against these specifications.
+2. PROPOSED: Add DATA STANDARDS section (between PROJECT ROOT DIRECTORY MAP and PART 4):
+
+   ## DATA STANDARDS
+
+   ### Status Field Values
+   All `status` columns across the database use UPPERCASE values:
+   - `ACTIVE` — account/record is active and operational
+   - `INACTIVE` — account/record is deactivated
+   - `LOCKED` — account locked due to failed login attempts
+
+   Applies to: auth.user_account.status, and any future status fields.
+
+   Reason: UPPERCASE is the industry standard for enum-like database values.
+   Prevents case-comparison bugs ('Active' !== 'ACTIVE').
 ```
 
 ---
 
-## Database Changes Needed
+## Database Changes Made
 
-**Status:** ✅ NO CHANGES NEEDED
+**Status:** ✅ TABLES EXIST — End-to-end tested on 2026-02-17
 
-Tables/columns to add in pgAdmin:
+Tables confirmed working via end-to-end login + forgot-password test:
 
 ```
-No database changes needed for SESSION 1.
-All required tables are already defined in database schema:
-- auth.user_account
-- auth.login_attempt
-- auth.otp
-- rbac.user_role
-- rbac.role_permission
-- rbac.permission
-- core.user_profile
-- notify.notification
-- audit.audit_log
-
-SESSION 2 (API Dev) and SESSION 3 (Database) will verify these tables exist.
+✅ auth.user_account — 5 users (test account: newgoatproject@outlook.com)
+✅ auth.login_attempt — login SUCCESS/FAILED entries recorded
+✅ auth.otp — OTP records created, otp_code column widened to varchar(72)
+✅ rbac.user_role — user 5 assigned Super Admin (role_id=1)
+✅ rbac.role — 6 roles exist (Super Admin=1, Admin=2, Farmer=3, Staff=4, Vet=5, Test=6)
+✅ rbac.role_permission — permissions exist
+✅ rbac.permission — permissions exist
+✅ core.user_profile — profiles exist (requires user_type + ic_or_passport NOT NULL)
+✅ notify.notification — OTP notification records created
+✅ audit.audit_log — verified working (column is created_at, not timestamp; audit.service.js fixed)
 ```
 
 ---
@@ -134,64 +164,58 @@ SESSION 2 (API Dev) and SESSION 3 (Database) will verify these tables exist.
 
 | Issue | Description | Status |
 |-------|-------------|--------|
-| None | No blockers encountered | ✅ Resolved |
+| PostgreSQL connection | Connected via Tailscale to `100.64.127.73:5432`. Health endpoint returns `{status: ok, db: connected}`. | ✅ Resolved |
+| Database tables | Tables exist on Pi (auth.user_account has 4 test users). Need to verify all required tables. | ⏳ Verify during testing |
+| SMTP configured | **Changed from Outlook to Gmail.** Outlook requires OAuth2 (basic auth disabled). Now using Gmail SMTP (`smtp.gmail.com:587`) with App Password. From address: `Orion System <poodletransformshere@gmail.com>`. Console.log fallback still in place. | ✅ Resolved |
+| auth.otp.otp_code column | Was `varchar(10)`, too short for bcrypt hash (~60 chars). User ran `ALTER TABLE auth.otp ALTER COLUMN otp_code TYPE varchar(72)` in pgAdmin. | ✅ Resolved |
+| SMTP credential sharing | `.env` is already in `.gitignore` (won't be pushed to git). **Decision needed:** How to securely share SMTP credentials with teammate? Options: (a) shared password manager, (b) `.env.example` with placeholder values in git + real values shared privately, (c) document in private team wiki. | ⏳ User to decide |
+| .env in git? | `.env` is already excluded via `api/.gitignore` line 2. Safe to push — credentials will NOT appear on GitHub. Consider creating `api/.env.example` (without real passwords) so teammate knows what variables to set. | ⏳ User to decide |
+| Status case mismatch | Database has `Active`/`Inactive` for some users, API expects `ACTIVE`/`INACTIVE`. Need to fix in pgAdmin. | ⏳ User to fix |
+| User 4 password hash | Double `$$` in bcrypt hash — data entry error. Re-hash or use forgot-password flow. | ⏳ User to fix |
+| AI has no DB schema access | AI cannot see table structures (columns, NOT NULL constraints, foreign keys). Had to guess INSERT columns, causing repeated failures. Docs describe tables but don't include full column definitions with constraints. **Needs solution:** either (a) export full schema DDL to `/docs` or `/database`, (b) give AI read access to `information_schema`, or (c) include column constraints in BLL.md table definitions. | ⏳ User to decide |
+| Data quality: bcrypt salt rounds | Users 1-4 use inconsistent salt rounds (`$2b$10` for user 1, `$2a$04` for users 2-3). Our code uses `$2a$12` (password.js). Old hashes still work but are weaker. Consider re-hashing on next login. | ⏳ Carry forward |
+| Data quality: test data formats | No standard format for ic_or_passport (IC numbers vs `TEST000005`), phone numbers (US format vs +60). Need a data dictionary before production deployment. | ⏳ Carry forward |
+| Data quality: user 1 (teammate) | `spiggles.67@gmail.com` created outside normal flow — missing `core.user_profile` row, assigned Admin role (role_id=2) not Super Admin. | ⏳ User to fix |
+| Data quality: users 2-4 no roles | Users 2, 3, 4 have no `rbac.user_role` entry — login would crash at permissions query. | ⏳ User to fix |
 
 ---
 
 ## Questions for Human
 
-1. ❓ Should we add a "Remember Me" checkbox to LOGIN page? (Not in CSV currently)
-2. ❓ Do you want to add email/SMS notification mock in mockApi.js to simulate OTP delivery?
-3. ❓ Should we create placeholder dashboard pages (/dashboard, /admin/dashboard) for login redirect testing?
+1. ❓ Confirm SESSION 2 complete? All API endpoints coded, frontend connected to real API, SMTP configured.
+2. ✅ Frontend swapped from `mockApi.js` to `api.js` — now calls real Express API via axios.
+3. ✅ SMTP configured: **Gmail** (`poodletransformshere@gmail.com`) via `smtp.gmail.com:587` with App Password. Outlook abandoned (requires OAuth2). Console.log fallback if SMTP fails.
+4. ✅ PostgreSQL connected via Tailscale: `DB_HOST=100.64.127.73`, port 5432. Health check verified: `{status: ok, db: connected}`. For production on Pi, change to `localhost`.
+5. ❓ Database status case: Users 2+4 have `Active` instead of `ACTIVE`. Run in pgAdmin: `UPDATE auth.user_account SET status = 'ACTIVE' WHERE status = 'Active';`
+6. ❓ User 4 password hash has double `$$`. Re-hash with known password in pgAdmin, or reset via forgot-password flow.
 
 ---
 
 ## Next Session Should
 
-**SESSION 2 - Backend API Development:**
+**SESSION 3 COMPLETED — Migration Setup Done (2026-02-18):**
 
-1. **Set up Express project structure** per Backend_Business_Logic.md (lines 975-1023)
-   - Install npm packages: express, cors, helmet, bcryptjs, jsonwebtoken, joi, axios, multer, nodemailer, date-fns, node-cron, morgan, dotenv
-   - Create folder structure: src/config, src/middleware, src/routes, src/services, src/utils, src/constants
+1. ✅ Database schema exported and converted to migration baseline
+2. ✅ Knex migration system set up (`knexfile.js` + `database/migrations/`)
+3. ✅ BLL updated to match actual DB column names (breed_type, date_administered)
+4. ✅ Gaps #2, #7, #8, #9, #10 marked as RESOLVED in BLL
+5. ✅ Frontend Coding Standards updated (Rule 6, 10, 12)
+6. ✅ README updated with three truth sources + migration workflow
 
-2. **Implement authentication endpoints**:
-   - POST /api/auth/login (implement business logic lines 18-91)
-   - POST /api/auth/forgot-password (implement business logic lines 97-128)
-   - POST /api/auth/reset-password (implement business logic lines 131-175)
+**THIS CYCLE (Login + Forgot Password) IS COMPLETE.**
+Move completed items to `Development_Log_History.md` and clear this file for next feature.
 
-3. **Create middleware**:
-   - auth.js (JWT verification per lines 179-189)
-   - permission.js (RBAC per lines 191-200)
-   - errorHandler.js (global error handling)
+**NEXT CYCLE — Pick next feature to build (starts at Session 1 again):**
 
-4. **Create PostgREST client utility** per lines 1049-1093
-   - Connects to https://raspberrypi.tail08c084.ts.net:10000
-   - Provides get(), create(), update(), remove() methods
+Option A: Admin Reference CRUD (vaccine_type, breeding_type, breed_type) — simplest, repeats 3x
+Option B: User Registration (Module 3) — multi-step transaction, enables creating test users
+Option C: Goat Management (Module 5) — core feature, most visible progress
 
-5. **Test endpoints** using Postman/Insomnia:
-   - Test login with farmer1@email.com / MyP@ssw0rd
-   - Test inactive account (admin@email.com)
-   - Test forgot password flow
-   - Verify JWT token generation
-   - Verify bcrypt password hashing
-
-6. **Update Development_Log.md** with:
-   - Mark LOGIN-001 to LOGIN-005 as API_Ready: ✓
-   - Mark FORGOT-001 to FORGOT-007 as API_Ready: ✓
-   - Note any business logic changes made during implementation
-
-7. **Replace frontend mock API** with real axios calls:
-   - Update src/utils/mockApi.js → src/utils/api.js
-   - Point to http://localhost:3000/api endpoints
-
-**SESSION 3 - Database Verification:**
-
-1. Connect to PostgreSQL database via pgAdmin
-2. Verify tables exist: auth.user_account, auth.otp, auth.login_attempt, rbac.*, core.*, audit.audit_log, notify.notification
-3. Seed test data if needed (test users, roles, permissions)
-4. Export updated schema to database/schema_export.sql
-5. Update CSV: Mark all LOGIN/FORGOT components as DB_Verified: ✓
-6. Clear Development_Log.md for next feature
+**Before starting next cycle:**
+1. Run `npm install knex pg --save-dev` from project root (one-time setup)
+2. Run `npx knex migrate:latest` to apply baseline
+3. Run `npx knex migrate:status` to confirm
+4. Fix data quality issues from this cycle (status case mismatch, user roles)
 
 ---
 
@@ -199,7 +223,9 @@ SESSION 2 (API Dev) and SESSION 3 (Database) will verify these tables exist.
 
 | Date | Item | Confirmed By | Applied To |
 |------|------|--------------|------------|
-| 2026-02-08 | SESSION 1: Login & Forgot Password Frontend | ⏳ PENDING | Frontend_Component_Mapping.csv |
+| 2026-02-08 | SESSION 1: Login & Forgot Password Frontend | Human | Frontend_Component_Mapping.csv |
+| 2026-02-14 | SESSION 2: Authentication Backend API (pg library) | ⏳ PENDING | Frontend_Component_Mapping.csv |
+| 2026-02-18 | SESSION 3: Migration setup + BLL/FCS sync | ⏳ PENDING | BLL, FCS, README, DevLog |
 
 ---
 

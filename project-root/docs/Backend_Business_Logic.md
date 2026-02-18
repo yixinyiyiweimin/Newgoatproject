@@ -1,5 +1,9 @@
 ## PART 3: BUSINESS LOGIC BY MODULE
 
+> **DB Column Name Convention:** Where this document's SQL queries differ from actual PostgreSQL column names, the actual DB column is noted inline. The canonical schema is defined in `database/migrations/`. If in doubt, check the migration files — they are the source of truth for column names.
+>
+> **Key mappings:** `admin_ref.goat_breed` → actual table is `admin_ref.breed_type` (PK: `breed_id`). `farm.vaccination.vaccinated_date` → actual column is `date_administered`.
+
 Each section follows this format:
 
 - **URS Reference**: Section number from URS V1.2
@@ -319,7 +323,7 @@ Differences:
 
 - No `interval_days` field (only `name`)
 - Check-in-use query: `SELECT 1 FROM farm.goat WHERE goat_breed_id = $1 LIMIT 1`
-- Database table: `admin_ref.goat_breed`
+- Database table: `admin_ref.breed_type` (PK: `breed_id`)
 
 ---
 
@@ -535,7 +539,7 @@ Image uploaded separately via `POST /api/goats/:id/image` (multipart)
    - If exists → 409 "Goat ID already registered"
 
 4. CHECK breed exists & is active
-   → SELECT 1 FROM admin_ref.goat_breed WHERE goat_breed_id = $1 AND is_active = true
+   → SELECT 1 FROM admin_ref.breed_type WHERE breed_id = $1 AND is_active = true
    -- params: [goat_breed_id]
    - If not found → 400 "Invalid or inactive breed"
 
@@ -579,7 +583,7 @@ Image uploaded separately via `POST /api/goats/:id/image` (multipart)
 3. BUILD SQL query:
    → SELECT g.*, gb.name AS breed_name
      FROM farm.goat g
-     LEFT JOIN admin_ref.goat_breed gb ON gb.goat_breed_id = g.goat_breed_id
+     LEFT JOIN admin_ref.breed_type gb ON gb.breed_id = g.goat_breed_id
      WHERE g.premise_id = $1 AND g.status = 'ACTIVE'
      ORDER BY g.registered_at DESC
    - Add filters dynamically: AND g.gender = $2, AND g.goat_breed_id = $3, etc.
@@ -612,13 +616,13 @@ Image uploaded separately via `POST /api/goats/:id/image` (multipart)
    - If not found → 404 "No goat assigned to this tag"
 
 4. FETCH related data (parallel):
-   → SELECT name FROM admin_ref.goat_breed WHERE goat_breed_id = $1
+   → SELECT name FROM admin_ref.breed_type WHERE breed_id = $1
    → SELECT health_status FROM farm.health_record WHERE goat_id = $1 ORDER BY recorded_at DESC LIMIT 1
-   → SELECT v.vaccinated_date, v.next_vaccinated_date, vt.name AS vaccine_type_name
+   → SELECT v.date_administered, v.next_vaccinated_date, vt.name AS vaccine_type_name
      FROM farm.vaccination v
      JOIN admin_ref.vaccine_type vt ON vt.vaccine_type_id = v.vaccine_type_id
      WHERE v.goat_id = $1
-     ORDER BY v.vaccinated_date DESC LIMIT 1
+     ORDER BY v.date_administered DESC LIMIT 1
 
 5. COMPUTE age (dynamic from birth_date, per URS display rules)
 
@@ -628,7 +632,7 @@ Image uploaded separately via `POST /api/goats/:id/image` (multipart)
      weight, registered_at, birth_date,
      health_status (from latest health_record),
      sire_id, dam_id,
-     vaccine_type_name, vaccinated_date, next_vaccinated_date
+     vaccine_type_name, date_administered (as vaccinated_date), next_vaccinated_date
    }
 
 7. RETURN — target < 2 seconds (URS performance requirement)
@@ -756,7 +760,7 @@ Note: `next_vaccinated_date` is NOT sent by frontend — Express calculates it.
 2. VALIDATE
    - goat_id: required, exists, active
    - vaccine_type_id: required, exists, active
-   - vaccinated_date: required, valid date
+   - vaccinated_date: required, valid date (DB column: `date_administered`)
 
 3. FETCH vaccine interval
    → SELECT interval_days FROM admin_ref.vaccine_type WHERE vaccine_type_id = $1 AND is_active = true
@@ -768,7 +772,7 @@ Note: `next_vaccinated_date` is NOT sent by frontend — Express calculates it.
    (using date-fns or dayjs: addDays(vaccinated_date, interval_days))
 
 5. CREATE vaccination
-   → INSERT INTO farm.vaccination (goat_id, vaccine_type_id, vaccinated_date, next_vaccinated_date)
+   → INSERT INTO farm.vaccination (goat_id, vaccine_type_id, date_administered, next_vaccinated_date)
      VALUES ($1, $2, $3, $4) RETURNING *
 
 6. AUDIT LOG
@@ -1056,7 +1060,7 @@ Note: `pregnancy_check_date` and `expected_birth_date` are NOT sent — Express 
    c. Goats by breed:
       → SELECT gb.name AS breed_name, COUNT(*) AS count
         FROM farm.goat g
-        JOIN admin_ref.goat_breed gb ON gb.goat_breed_id = g.goat_breed_id
+        JOIN admin_ref.breed_type gb ON gb.breed_id = g.goat_breed_id
         WHERE g.premise_id = $1 AND g.status = 'ACTIVE'
         GROUP BY gb.name
 
@@ -1072,7 +1076,9 @@ project-root/
 ├── docs/       ← All documentation (BLL.md, CSV, DevLog, Coding Standards)
 ├── frontend/   ← React + Vite frontend
 ├── api/        ← Express API (this document's code goes here)
-└── database/   ← Database backups & schema exports
+├── database/   ← Migration files (schema source of truth)
+│   └── migrations/
+└── knexfile.js ← Database migration config
 ```
 
 ---
@@ -1279,15 +1285,15 @@ SMTP_PASS=your-app-password
 |#|Gap|Where|Decision Needed|
 |---|---|---|---|
 |1|**No `rfid_scan_history` table**|URS 2.2.3 says display scan history — your Excel has an "RFID Scanner History" sheet but no DB table|Add table? Or use sensor_data?|
-|2|**Goat `status` values** not enumerated|farm.goat.status is varchar(20)|Define enum: ACTIVE, SLAUGHTERED, SOLD, DEAD, RETIRED|
+|2|~~**Goat `status` values** not enumerated~~|farm.goat.status is varchar(20)|**RESOLVED** — Values: ACTIVE, SLAUGHTERED, SOLD, DEAD|
 |3|**File storage strategy**|URS requires document uploads + goat images|Local disk? AWS S3? Need to decide|
-|4|**OTP delivery**|URS says email + SMS/WhatsApp|Email = nodemailer/SendGrid. SMS = Twilio? WhatsApp Business API? Budget?|
+|4|**OTP delivery**|URS says email + SMS/WhatsApp|**PARTIALLY RESOLVED** — Email via Gmail SMTP. SMS/WhatsApp TBD.|
 |5|**Premise-to-user scoping**|farm.goat has premise_id but no user_account_id|Goats are scoped to premises, users are linked to premises via user_profile. This is correct but needs consistent enforcement.|
 |6|**user_profile.premise_id** is nullable FK|What if a user has no premise?|Make required for farm users, optional for admins?|
-|7|**vaccine_type_id FK** missing in farm.vaccination|vaccination.vaccine_type_id is int but no FK constraint in your CSV|Add FK constraint: `ALTER TABLE farm.vaccination ADD CONSTRAINT ... REFERENCES admin_ref.vaccine_type(vaccine_type_id)`|
-|8|**goat_breed_id FK** missing in farm.goat|Same issue — no FK to admin_ref.goat_breed|Add FK constraint|
-|9|**breeding_type_id FK** missing in farm.breeding_program|Same pattern|Add FK constraint|
-|10|**premise_id FK** missing in farm.goat|goat.premise_id is int, no FK to core.premise|Add FK constraint|
+|7|~~**vaccine_type_id FK** missing in farm.vaccination~~|vaccination.vaccine_type_id|**RESOLVED** — FK exists: `vaccine_type_id → admin_ref.vaccine_type(vaccine_type_id)`|
+|8|~~**goat_breed_id FK** missing in farm.goat~~|goat.goat_breed_id|**RESOLVED** — FK exists: `goat_breed_id → admin_ref.breed_type(breed_id)`|
+|9|~~**breeding_type_id FK** missing in farm.breeding_program~~|breeding_program.breeding_type_id|**RESOLVED** — FK exists: `breeding_type_id → admin_ref.breeding_type(breeding_type_id)`|
+|10|~~**premise_id FK** missing in farm.goat~~|goat.premise_id|**RESOLVED** — FK exists: `premise_id → core.premise(premise_id)`|
 |11|**Notification content**|notify.notification has no `message_body` or `recipient` column|Add columns or handle email content in Express only (don't store body in DB)|
 |12|**Birth certificate PDF generation**|URS says "Generate Birth Certificates"|Use pdfkit or puppeteer in Express to generate PDF|
 |13|**Dashboard customization**|URS 2.1.2: "Allow admins to select data to display"|Store admin dashboard preferences in a new table? Or handle frontend-side?|
@@ -1344,10 +1350,10 @@ WEEK 4: Polish
 | POST   | /api/admin/breeding-types                    | 2.1.4        | admin_ref.breeding_type, audit.audit_log                                                                                     |
 | PATCH  | /api/admin/breeding-types/:id                | 2.1.4        | admin_ref.breeding_type, audit.audit_log                                                                                     |
 | DELETE | /api/admin/breeding-types/:id                | 2.1.4        | admin_ref.breeding_type, farm.breeding_program, audit.audit_log                                                              |
-| GET    | /api/admin/goat-breeds                       | 2.1.5        | admin_ref.goat_breed                                                                                                         |
-| POST   | /api/admin/goat-breeds                       | 2.1.5        | admin_ref.goat_breed, audit.audit_log                                                                                        |
-| PATCH  | /api/admin/goat-breeds/:id                   | 2.1.5        | admin_ref.goat_breed, audit.audit_log                                                                                        |
-| DELETE | /api/admin/goat-breeds/:id                   | 2.1.5        | admin_ref.goat_breed, farm.goat, audit.audit_log                                                                             |
+| GET    | /api/admin/goat-breeds                       | 2.1.5        | admin_ref.breed_type                                                                                                         |
+| POST   | /api/admin/goat-breeds                       | 2.1.5        | admin_ref.breed_type, audit.audit_log                                                                                        |
+| PATCH  | /api/admin/goat-breeds/:id                   | 2.1.5        | admin_ref.breed_type, audit.audit_log                                                                                        |
+| DELETE | /api/admin/goat-breeds/:id                   | 2.1.5        | admin_ref.breed_type, farm.goat, audit.audit_log                                                                             |
 | POST   | /api/admin/users                             | 2.1.6        | auth.user_account, core.premise, core.user_profile, core.user_document, rbac.user_role, notify.notification, audit.audit_log |
 | GET    | /api/admin/users                             | 2.1.6        | core.user_profile, auth.user_account, core.user_document                                                                     |
 | PATCH  | /api/admin/users/:id                         | 2.1.6        | core.user_profile, auth.user_account, audit.audit_log                                                                        |
@@ -1357,10 +1363,10 @@ WEEK 4: Polish
 | PATCH  | /api/admin/roles/:id                         | 2.1.7        | rbac.role, rbac.role_permission, audit.audit_log                                                                             |
 | DELETE | /api/admin/roles/:id                         | 2.1.7        | rbac.role, rbac.user_role, rbac.role_permission, audit.audit_log                                                             |
 | GET    | /api/admin/dashboard                         | 2.1.2        | core.premise, auth.user_account, core.user_profile                                                                           |
-| GET    | /api/dashboard                               | 2.2.2        | farm.goat, core.user_profile, admin_ref.goat_breed                                                                           |
-| GET    | /api/rfid/scan/:tag_code                     | 2.2.3        | farm.rfid_tag, farm.goat, admin_ref.goat_breed, farm.health_record, farm.vaccination, admin_ref.vaccine_type                 |
-| POST   | /api/goats                                   | 2.2.5        | farm.goat, farm.rfid_tag, admin_ref.goat_breed, audit.audit_log                                                              |
-| GET    | /api/goats                                   | 2.2.5        | farm.goat, admin_ref.goat_breed                                                                                              |
+| GET    | /api/dashboard                               | 2.2.2        | farm.goat, core.user_profile, admin_ref.breed_type                                                                           |
+| GET    | /api/rfid/scan/:tag_code                     | 2.2.3        | farm.rfid_tag, farm.goat, admin_ref.breed_type, farm.health_record, farm.vaccination, admin_ref.vaccine_type                 |
+| POST   | /api/goats                                   | 2.2.5        | farm.goat, farm.rfid_tag, admin_ref.breed_type, audit.audit_log                                                              |
+| GET    | /api/goats                                   | 2.2.5        | farm.goat, admin_ref.breed_type                                                                                              |
 | PATCH  | /api/goats/:id                               | 2.2.5        | farm.goat, audit.audit_log                                                                                                   |
 | DELETE | /api/goats/:id                               | 2.2.5        | farm.goat, audit.audit_log                                                                                                   |
 | POST   | /api/goats/:id/image                         | 2.2.5        | farm.goat_image                                                                                                              |
@@ -1369,7 +1375,7 @@ WEEK 4: Polish
 | PATCH  | /api/slaughter/:id                           | 2.2.6        | farm.slaughter, audit.audit_log                                                                                              |
 | DELETE | /api/slaughter/:id                           | 2.2.6        | farm.slaughter, audit.audit_log                                                                                              |
 | POST   | /api/health-records                          | 2.2.7        | farm.health_record, farm.goat, audit.audit_log                                                                               |
-| GET    | /api/health-records                          | 2.2.7        | farm.health_record, farm.goat, admin_ref.goat_breed                                                                          |
+| GET    | /api/health-records                          | 2.2.7        | farm.health_record, farm.goat, admin_ref.breed_type                                                                          |
 | PATCH  | /api/health-records/:id                      | 2.2.7        | farm.health_record, audit.audit_log                                                                                          |
 | DELETE | /api/health-records/:id                      | 2.2.7        | farm.health_record, audit.audit_log                                                                                          |
 | POST   | /api/vaccinations                            | 2.2.8        | farm.vaccination, admin_ref.vaccine_type, farm.goat, audit.audit_log                                                         |

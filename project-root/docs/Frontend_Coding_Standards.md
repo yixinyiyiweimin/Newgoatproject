@@ -115,6 +115,7 @@ NUMBER:
 1. **Never modify these files directly:**
    - `Frontend_Component_Mapping.csv`
    - `Backend_Business_Logic.md`
+   - Existing `database/migrations/*` files that have already been applied — instead, create a NEW migration file for any database changes (e.g., `npx knex migrate:make add_goat_color`)
 
 2. **Instead, write proposed changes to `Development_Log.md`:**
    ```markdown
@@ -124,6 +125,11 @@ NUMBER:
    ## Proposed Business Logic Update
    - New endpoint needed: GET /api/goats/export
    - Returns: CSV file of all goats
+   
+   ## Proposed Database Change
+   - Need new column: farm.goat.color VARCHAR(50)
+   - AI will create: database/migrations/YYYYMMDD_add_goat_color.js
+   - Human runs: npx knex migrate:latest
    ```
 
 3. **Wait for human confirmation** before any master document update.
@@ -196,9 +202,10 @@ Needs: Returns PDF/CSV of filtered goat list
 Before coding, AI should:
 
 1. Read `Backend_Business_Logic.md` (understand what APIs exist)
-2. Read `Frontend_Component_Mapping.csv` (understand what components exist)
-3. Read `Development_Log.md` (understand pending work)
-4. Ask human: "What are we working on today?"
+2. Read `database/migrations/` (understand actual DB schema — use THESE column names in SQL)
+3. Read `Frontend_Component_Mapping.csv` (understand what components exist)
+4. Read `Development_Log.md` (understand pending work)
+5. Ask human: "What are we working on today?"
 
 ---
 
@@ -221,7 +228,7 @@ The CSV has three status columns for tracking implementation progress:
 |--------|--------|-------------|
 | **UI_Ready** | React component coded and works | You / AI after frontend coding |
 | **API_Ready** | Express endpoint coded and works | You / AI after API coding |
-| **DB_Verified** | Database tables/columns confirmed | You after verifying in pgAdmin |
+| **DB_Verified** | Database tables/columns confirmed | You after running `npx knex migrate:status` |
 
 **Status Values:**
 
