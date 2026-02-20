@@ -168,7 +168,7 @@ Never implement plans without updating docs first.
 
 ## First-Time Setup
 
-See the setup instructions below. Only needed once per developer machine.
+Only needed once per developer machine.
 
 ### Prerequisites
 - Node.js installed on your local PC
@@ -176,16 +176,23 @@ See the setup instructions below. Only needed once per developer machine.
 
 ### Steps
 ```bash
-# 1. From project root, install knex
-npm install knex pg --save-dev
+# 1. Install all dependencies (root + api + frontend)
+cd project-root
+npm run setup
 
-# 2. Verify connection to Pi
+# 2. Set up environment variables
+cp api/.env.example api/.env
+# Then fill in real values (ask team lead for credentials)
+
+# 3. Verify database connection
 npx knex migrate:status
 
-# 3. Apply baseline (safe — uses IF NOT EXISTS)
+# 4. Apply migrations (safe — uses IF NOT EXISTS)
 npx knex migrate:latest
+```
 
-# 4. Verify
-npx knex migrate:status
-# Should show: 20260218000000_baseline.js .... DONE
+### Running the App
+```bash
+npm run dev:api        # Start Express API on port 3000
+npm run dev:frontend   # Start React dev server (Vite)
 ```

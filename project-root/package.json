@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "setup": "npm install && cd api && npm install && cd ../frontend && npm install",
+    "dev:api": "cd api && node src/index.js",
+    "dev:frontend": "cd frontend && npm run dev"
+  },
   "devDependencies": {
     "dotenv": "^17.3.1",
     "knex": "^3.1.0",
