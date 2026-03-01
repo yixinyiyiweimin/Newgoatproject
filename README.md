@@ -29,7 +29,7 @@ If the BLL says one column name and the migration file says another, **the migra
 ## Folder Structure
 
 ```
-/project-root
+/repo-root
 ├── README.md                           ← YOU ARE HERE
 ├── knexfile.js                         ← Database migration config
 ├── Development_Log_History.md
@@ -50,6 +50,10 @@ If the BLL says one column name and the migration file says another, **the migra
 │
 ├── /api                                ← Express code
 │   └── /src
+│
+├── /uploads                            ← User uploads (not in git)
+│   ├── /documents                      ← IC scans, registration docs
+│   └── /goat-images                    ← Goat photos
 │
 └── /hardware                           ← Hardware team's domain
 ```
@@ -213,7 +217,7 @@ Only needed once per developer machine.
 ### Steps
 ```bash
 # 1. Install all dependencies (root + api + frontend)
-cd project-root
+cd repo-root
 npm run setup
 
 # 2. Set up environment variables

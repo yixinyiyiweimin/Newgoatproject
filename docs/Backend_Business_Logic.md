@@ -1176,12 +1176,13 @@ Note: `pregnancy_check_date` and `expected_birth_date` are NOT sent — Express 
 ## PROJECT ROOT DIRECTORY MAP
 
 ```
-project-root/
+repo-root/
 ├── docs/       ← All documentation (BLL.md, CSV, DevLog, Coding Standards)
 ├── frontend/   ← React + Vite frontend
 ├── api/        ← Express API (this document's code goes here)
 ├── database/   ← Migration files (schema source of truth)
 │   └── migrations/
+├── uploads/    ← User file uploads (not in git)
 └── knexfile.js ← Database migration config
 ```
 
