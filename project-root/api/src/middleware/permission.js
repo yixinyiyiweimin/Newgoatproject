@@ -9,9 +9,9 @@ module.exports = (moduleName, action) => {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
 
-    // Find permission entry for this module
+    // Find permission entry for this module (case-insensitive)
     const modulePermission = req.user.permissions.find(
-      (p) => p.module === moduleName
+      (p) => p.module.toLowerCase() === moduleName.toLowerCase()
     );
 
     if (!modulePermission) {
@@ -20,8 +20,9 @@ module.exports = (moduleName, action) => {
       });
     }
 
-    // Check if action is allowed
-    if (!modulePermission.actions.includes(action)) {
+    // Check if action is allowed (case-insensitive)
+    const normalizedActions = modulePermission.actions.map((a) => a.toLowerCase());
+    if (!normalizedActions.includes(action.toLowerCase())) {
       return res.status(403).json({
         message: `Action '${action}' not allowed for module '${moduleName}'`,
       });

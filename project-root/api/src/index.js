@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const config = require('./config/env');
 const errorHandler = require('./middleware/errorHandler');
 const authRoutes = require('./routes/auth.routes');
+const adminRoutes = require('./routes/admin.routes');
 const db = require('./utils/db');
 
 const app = express();
@@ -27,6 +28,7 @@ app.get('/api/health', async (req, res) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 handler
 app.use((req, res) => {

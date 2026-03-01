@@ -243,11 +243,14 @@ These three modules (Vaccine Type, Breeding Type, Goat Breed) follow the identic
 **Express Endpoints:**
 
 ```
-GET    /api/admin/vaccine-types          → List all (active only by default)
-POST   /api/admin/vaccine-types          → Create
-PATCH  /api/admin/vaccine-types/:id      → Update
-DELETE /api/admin/vaccine-types/:id      → Soft-delete (set is_active=false)
+GET    /api/admin/vaccine-types              → List all (active only by default)
+GET    /api/admin/vaccine-types/archived     → List archived (is_active=false)
+POST   /api/admin/vaccine-types              → Create
+PATCH  /api/admin/vaccine-types/:id          → Update
+DELETE /api/admin/vaccine-types/:id          → Soft-delete (set is_active=false)
 ```
+
+> **Archived endpoint pattern applies to all 3 reference data modules** (vaccine-types, breeding-types, goat-breeds). Each has a `/archived` GET endpoint returning `SELECT * WHERE is_active = false`.
 
 **Create — `POST /api/admin/vaccine-types`**
 
@@ -343,15 +346,15 @@ Differences:
   "address": "Kg Baru, Selangor",
   "phone_number": "+60123456789",
   "email": "ahmad@email.com",
-  "premise_code": "P001",
-  "premise_state": "Selangor",
-  "premise_district": "Hulu Langat",
-  "premise_address": "Kg Baru",
+  "premise_id": 1,
+  "role_id": 3,
   "documents": []           // file upload handled separately (multipart)
 }
 ```
 
 For Company, additional fields: `company_name`, `company_registration_no`, `person_in_charge`
+
+> **Changed from V1:** `premise_code`/`premise_state`/`premise_district`/`premise_address` replaced by `premise_id` (references existing premise from Premise Management). `role_id` added (optional, falls back to Farm Owner if not provided).
 
 **Express business logic (multi-step transaction):**
 
@@ -364,14 +367,17 @@ For Company, additional fields: `company_name`, `company_registration_no`, `pers
    - If Company: company_name, company_registration_no required
    - email format validation (regex)
    - phone format validation (Malaysian format)
-   - premise_code required
+   - premise_id: required, integer
+   - role_id: optional, integer
 
-3. CHECK DUPLICATES
+3. CHECK DUPLICATES & REFERENCES
    → SELECT 1 FROM auth.user_account WHERE email = $1  -- (email unique check)
    → SELECT 1 FROM auth.user_account WHERE phone_number = $1  -- (phone unique check)
    → SELECT 1 FROM core.user_profile WHERE ic_or_passport = $1  -- (IC unique check)
-   → SELECT 1 FROM core.premise WHERE premise_code = $1  -- (premise duplicate check)
-   - If any exist → return 409 with specific message
+   → SELECT 1 FROM core.premise WHERE premise_id = $1 AND status = 'ACTIVE'  -- (premise exists check)
+   - If premise not found → return 400 "Invalid or inactive premise"
+   - If role_id provided: SELECT 1 FROM rbac.role WHERE role_id = $1  -- (role exists check)
+   - If any duplicate → return 409 with specific message
 
 4. GENERATE temporary password
    - crypto.randomBytes(8).toString('hex') → e.g., "a3f8b2c1"
@@ -384,10 +390,7 @@ For Company, additional fields: `company_name`, `company_registration_no`, `pers
      VALUES ($1, $2, $3, 'ACTIVE') RETURNING user_account_id
    -- params: [email, phone_number, hashedPassword]
 
-6. CREATE premise
-   → INSERT INTO core.premise (premise_code, state, district, address, status)
-     VALUES ($1, $2, $3, $4, 'ACTIVE') RETURNING premise_id
-   -- params: [premise_code, premise_state, premise_district, premise_address]
+6. VERIFY premise exists (already checked in step 3, use premise_id directly)
 
 7. CREATE user_profile
    → INSERT INTO core.user_profile (user_account_id, user_type, full_name, company_name, ic_or_passport, company_registration_no, address, email, phone_number, premise_id)
@@ -400,10 +403,10 @@ For Company, additional fields: `company_name`, `company_registration_no`, `pers
      → INSERT INTO core.user_document (user_profile_id, file_path, file_type)
        VALUES ($1, $2, $3)
 
-9. ASSIGN default role
+9. ASSIGN role (use provided role_id, or default to Farm Owner)
    → INSERT INTO rbac.user_role (user_account_id, role_id)
      VALUES ($1, $2)
-   -- params: [user_account_id, default_farmer_role_id]
+   -- params: [user_account_id, role_id || default_farm_owner_role_id]
 
 10. SEND credentials
     - If email exists: send email with { email, tempPassword }
@@ -468,32 +471,133 @@ For Company, additional fields: `company_name`, `company_registration_no`, `pers
 
 ```
 1. CHECK if system role → if is_system_role=true → return 403 "Cannot delete system role"
-2. CHECK if assigned:
-   → SELECT 1 FROM rbac.user_role WHERE role_id = $1 LIMIT 1
-   → If assigned → return 409 "Role is assigned to users. Reassign first."
-3. DELETE role_permissions:
+2. COUNT assigned users:
+   → SELECT COUNT(*) FROM rbac.user_role WHERE role_id = $1
+   - Frontend shows two-step confirm if count > 0:
+     "N users are currently assigned this role. They will lose all permissions."
+3. AUTO-UNASSIGN users:
+   → DELETE FROM rbac.user_role WHERE role_id = $1
+4. DELETE role_permissions:
    → DELETE FROM rbac.role_permission WHERE role_id = $1
-4. DELETE role:
+5. DELETE role:
    → DELETE FROM rbac.role WHERE role_id = $1
-5. AUDIT LOG
+6. AUDIT LOG
+7. RETURN { deleted: true, users_unassigned: count }
 ```
 
-#### 4C. Delete User (Soft Delete)
+#### 4C. Delete User (Soft Delete / Hard Delete)
 
 ```
 1. CHECK if Super Admin → block
-2. UPDATE auth.user_account SET status = 'INACTIVE' WHERE user_account_id = $1
-3. AUDIT LOG with old_value: { status: 'ACTIVE' }, new_value: { status: 'INACTIVE' }
+2. CHECK current status:
+   → SELECT status FROM auth.user_account WHERE user_account_id = $1
+
+3a. IF status = 'ACTIVE' → SOFT DELETE
+   → UPDATE auth.user_account SET status = 'INACTIVE' WHERE user_account_id = $1
+   → AUDIT LOG with old_value: { status: 'ACTIVE' }, new_value: { status: 'INACTIVE' }
+
+3b. IF status = 'INACTIVE' → HARD DELETE (permanent, cascade)
+   - Frontend shows warning: "This will permanently remove all data for this user."
+   → DELETE FROM rbac.user_role WHERE user_account_id = $1
+   → DELETE FROM notify.notification WHERE user_account_id = $1
+   → DELETE FROM core.user_document WHERE user_profile_id = (SELECT user_profile_id FROM core.user_profile WHERE user_account_id = $1)
+   → DELETE FROM core.user_profile WHERE user_account_id = $1
+   → DELETE FROM auth.user_account WHERE user_account_id = $1
+   → AUDIT LOG with action: 'HARD_DELETE'
 ```
+
+#### 4D. System Role Protection
+
+```
+When editing a system role (is_system_role = true):
+1. Backend: updateRole() returns 403 "Cannot modify system role permissions"
+2. Frontend: Role name input + all permission checkboxes are disabled
+3. Frontend: Yellow warning banner: "System role permissions are locked to prevent accidental lockout."
+Only Super Admin is seeded as system role. Admin can mark other roles at runtime.
+```
+
+---
+
+### MODULE 4.5: PREMISE MANAGEMENT (URS 2.1.6 - supporting module)
+
+> **Context:** Premises were previously auto-created during user registration. Now managed separately to prevent duplicate/invalid premise entries.
+
+#### 4.5A. Premise CRUD
+
+**Express Endpoints:**
+
+```
+GET    /api/admin/premises              → List all active premises
+GET    /api/admin/premises/archived     → List archived premises
+GET    /api/admin/premises/dropdown     → List for dropdown (id + code only)
+POST   /api/admin/premises              → Create
+PATCH  /api/admin/premises/:id          → Update
+DELETE /api/admin/premises/:id          → Soft-delete (set status='INACTIVE')
+```
+
+**Create -- `POST /api/admin/premises`**
+
+Frontend sends:
+
+```json
+{
+  "premise_code": "PREM001",
+  "state": "Selangor",
+  "district": "Hulu Langat",
+  "address": "Kg Baru"
+}
+```
+
+Express logic:
+
+```
+1. AUTH + PERMISSION('premise', 'create')
+2. VALIDATE:
+   - premise_code: required, unique
+   - state, district, address: optional strings
+3. CHECK DUPLICATE:
+   → SELECT 1 FROM core.premise WHERE premise_code = $1
+   - If exists → 409 "Premise code already exists"
+4. CREATE:
+   → INSERT INTO core.premise (premise_code, state, district, address, status)
+     VALUES ($1, $2, $3, $4, 'ACTIVE') RETURNING *
+5. AUDIT LOG
+6. RETURN created record
+```
+
+**Delete -- `DELETE /api/admin/premises/:id`**
+
+```
+1. AUTH + PERMISSION('premise', 'delete')
+2. CHECK if in use:
+   → SELECT 1 FROM core.user_profile WHERE premise_id = $1 LIMIT 1
+   - If assigned to active users → return 409 "Cannot archive: premise is assigned to active users"
+3. SOFT DELETE:
+   → UPDATE core.premise SET status = 'INACTIVE' WHERE premise_id = $1
+4. AUDIT LOG
+5. RETURN 200 { message: "Premise archived" }
+```
+
+**Dropdown -- `GET /api/admin/premises/dropdown`**
+
+```
+1. AUTH (any authenticated user)
+2. → SELECT premise_id, premise_code, state, district
+     FROM core.premise WHERE status = 'ACTIVE' ORDER BY premise_code ASC
+3. RETURN array (lightweight, no address for dropdown performance)
+```
+
+---
 
 #### Permission Module Names (Seed Data)
 
 ```
 Modules: goat, vaccination, health_record, breeding_program, slaughter,
          feed_price_calculator, feed_calculator, vaccine_type, breeding_type,
-         goat_breed, user_registration, user_role, dashboard, rfid_scan
+         goat_breed, user_registration, user_role, dashboard, rfid_scan,
+         premise
 
-Actions: view, create, update, delete
+Actions: view, create, update, delete  (ALL LOWERCASE in database)
 ```
 
 ---
@@ -1278,29 +1382,6 @@ SMTP_PASS=your-app-password
 
 ---
 
-## PART 6: IDENTIFIED GAPS & DECISIONS NEEDED
-
-^590d01
-
-|#|Gap|Where|Decision Needed|
-|---|---|---|---|
-|1|**No `rfid_scan_history` table**|URS 2.2.3 says display scan history — your Excel has an "RFID Scanner History" sheet but no DB table|Add table? Or use sensor_data?|
-|2|~~**Goat `status` values** not enumerated~~|farm.goat.status is varchar(20)|**RESOLVED** — Values: ACTIVE, SLAUGHTERED, SOLD, DEAD|
-|3|**File storage strategy**|URS requires document uploads + goat images|Local disk? AWS S3? Need to decide|
-|4|**OTP delivery**|URS says email + SMS/WhatsApp|**PARTIALLY RESOLVED** — Email via Gmail SMTP. SMS/WhatsApp TBD.|
-|5|**Premise-to-user scoping**|farm.goat has premise_id but no user_account_id|Goats are scoped to premises, users are linked to premises via user_profile. This is correct but needs consistent enforcement.|
-|6|**user_profile.premise_id** is nullable FK|What if a user has no premise?|Make required for farm users, optional for admins?|
-|7|~~**vaccine_type_id FK** missing in farm.vaccination~~|vaccination.vaccine_type_id|**RESOLVED** — FK exists: `vaccine_type_id → admin_ref.vaccine_type(vaccine_type_id)`|
-|8|~~**goat_breed_id FK** missing in farm.goat~~|goat.goat_breed_id|**RESOLVED** — FK exists: `goat_breed_id → admin_ref.breed_type(breed_id)`|
-|9|~~**breeding_type_id FK** missing in farm.breeding_program~~|breeding_program.breeding_type_id|**RESOLVED** — FK exists: `breeding_type_id → admin_ref.breeding_type(breeding_type_id)`|
-|10|~~**premise_id FK** missing in farm.goat~~|goat.premise_id|**RESOLVED** — FK exists: `premise_id → core.premise(premise_id)`|
-|11|**Notification content**|notify.notification has no `message_body` or `recipient` column|Add columns or handle email content in Express only (don't store body in DB)|
-|12|**Birth certificate PDF generation**|URS says "Generate Birth Certificates"|Use pdfkit or puppeteer in Express to generate PDF|
-|13|**Dashboard customization**|URS 2.1.2: "Allow admins to select data to display"|Store admin dashboard preferences in a new table? Or handle frontend-side?|
-|14|**Feed Calculator "All Goats" tab**|Needs avg weight from all active goats|Express computes this dynamically — no DB change needed|
-
----
-
 ## PART 7: DEVELOPMENT ORDER (Recommended)
 
 Build in this order to get a working system fastest:
@@ -1354,10 +1435,19 @@ WEEK 4: Polish
 | POST   | /api/admin/goat-breeds                       | 2.1.5        | admin_ref.breed_type, audit.audit_log                                                                                        |
 | PATCH  | /api/admin/goat-breeds/:id                   | 2.1.5        | admin_ref.breed_type, audit.audit_log                                                                                        |
 | DELETE | /api/admin/goat-breeds/:id                   | 2.1.5        | admin_ref.breed_type, farm.goat, audit.audit_log                                                                             |
-| POST   | /api/admin/users                             | 2.1.6        | auth.user_account, core.premise, core.user_profile, core.user_document, rbac.user_role, notify.notification, audit.audit_log |
+| GET    | /api/admin/vaccine-types/archived            | 2.1.3        | admin_ref.vaccine_type                                                                                                       |
+| GET    | /api/admin/breeding-types/archived           | 2.1.4        | admin_ref.breeding_type                                                                                                      |
+| GET    | /api/admin/goat-breeds/archived              | 2.1.5        | admin_ref.breed_type                                                                                                         |
+| GET    | /api/admin/premises                          | 2.1.6        | core.premise                                                                                                                 |
+| GET    | /api/admin/premises/archived                 | 2.1.6        | core.premise                                                                                                                 |
+| GET    | /api/admin/premises/dropdown                 | 2.1.6        | core.premise                                                                                                                 |
+| POST   | /api/admin/premises                          | 2.1.6        | core.premise, audit.audit_log                                                                                                |
+| PATCH  | /api/admin/premises/:id                      | 2.1.6        | core.premise, audit.audit_log                                                                                                |
+| DELETE | /api/admin/premises/:id                      | 2.1.6        | core.premise, audit.audit_log                                                                                                |
+| POST   | /api/admin/users                             | 2.1.6        | auth.user_account, core.user_profile, core.user_document, rbac.user_role, notify.notification, audit.audit_log               |
 | GET    | /api/admin/users                             | 2.1.6        | core.user_profile, auth.user_account, core.user_document                                                                     |
 | PATCH  | /api/admin/users/:id                         | 2.1.6        | core.user_profile, auth.user_account, audit.audit_log                                                                        |
-| DELETE | /api/admin/users/:id                         | 2.1.6        | auth.user_account (soft delete), audit.audit_log                                                                             |
+| DELETE | /api/admin/users/:id                         | 2.1.6        | auth.user_account (soft if active, hard cascade if inactive), audit.audit_log                                                |
 | POST   | /api/admin/roles                             | 2.1.7        | rbac.role, rbac.permission, rbac.role_permission, audit.audit_log                                                            |
 | GET    | /api/admin/roles                             | 2.1.7        | rbac.role, rbac.role_permission, rbac.permission                                                                             |
 | PATCH  | /api/admin/roles/:id                         | 2.1.7        | rbac.role, rbac.role_permission, audit.audit_log                                                                             |
@@ -1398,6 +1488,202 @@ WEEK 4: Polish
 
 ---
 
-**Total: 42 Express endpoints covering all 11 URS functional modules + 2 dashboards.**
+**Total: 65 Express endpoints covering all 11 URS functional modules + 2 dashboards + premise management.**
 
 This document is your contract. Frontend builds to the request/response shapes. Backend implements the logic. Express connects to PostgreSQL directly via the `pg` library. No guessing.
+
+---
+
+## PART 9: SEED DATA & ENUM VALUES
+
+> **Purpose:** This section defines the exact rows that must exist in lookup/reference tables for the system to function. Coding AI should validate database rows against these definitions and write migrations to fix discrepancies.
+>
+> **Convention:** All enum-like values in the database use UPPERCASE (e.g., `'ACTIVE'`, `'FAILED'`). **Exception:** Permission actions in `rbac.permission` use **lowercase** (e.g., `'view'`, `'create'`). Module names use lowercase_snake_case (e.g., `'goat'`, `'health_record'`). A normalization migration (`20260301100000_normalize_permission_case.js`) ensures no duplicate UPPER/lower rows exist.
+
+---
+
+### 9A. Roles — `rbac.role`
+
+Source: URS 1.2, 1.3, 2.1.7, 2.2.4
+
+| role_name | is_system_role | URS Reference | Notes |
+|-----------|:-------------:|---------------|-------|
+| Super Admin | true | URS 2.1.7 | Cannot be deleted. Has ALL permissions. Full system access. |
+| Admin | false | URS 2.1.7 | System-level admin. Manages users, reference data, monitoring. |
+| Farm Owner | false | URS 2.2.4 | Owns premises. Can add farmers/staff under their premise. |
+| Farmer | false | URS 2.2.4 | Day-to-day goat operations within assigned premise. |
+| Staff | false | URS 1.3 | Assists farm owner with daily input (feeding, scanning). |
+| Veterinarian | false | URS 1.2 | Health and vaccination focus. |
+
+**Total: 6 roles.** Any role not in this list is either test data (delete it) or was created at runtime by an admin via the Roles management page (valid).
+
+---
+
+### 9B. Permission Modules & Actions — `rbac.permission`
+
+Source: URS functional modules (2.1.x and 2.2.x) + BLL Module 4
+
+Each module gets 4 actions. **All values lowercase.**
+
+| module_name | Actions | URS Section | Notes |
+|-------------|---------|-------------|-------|
+| dashboard | view, create, update, delete | 2.1.2, 2.2.2 | create/update/delete may not be used but included for consistency |
+| vaccine_type | view, create, update, delete | 2.1.3 | Admin reference CRUD |
+| breeding_type | view, create, update, delete | 2.1.4 | Admin reference CRUD |
+| goat_breed | view, create, update, delete | 2.1.5 | Admin reference CRUD |
+| premise | view, create, update, delete | 2.1.6 | Premise management CRUD |
+| user_registration | view, create, update, delete | 2.1.6 | Admin creates users for User Web App |
+| user_role | view, create, update, delete | 2.1.7, 2.2.4 | Manage users and roles |
+| goat | view, create, update, delete | 2.2.5 | Goat registration and management |
+| slaughter | view, create, update, delete | 2.2.6 | Slaughter records |
+| health_record | view, create, update, delete | 2.2.7 | Health tracker |
+| vaccination | view, create, update, delete | 2.2.8 | Vaccination schedules |
+| breeding_program | view, create, update, delete | 2.2.9 | Breeding programs + birth certificates |
+| feed_price_calculator | view, create, update, delete | 2.2.10 | Feed price calculator |
+| feed_calculator | view, create, update, delete | 2.2.11 | Feed requirement calculator |
+| rfid_scan | view, create, update, delete | 2.2.3 | RFID scan and history |
+
+**Total: 15 modules x 4 actions = 60 permission rows.**
+
+---
+
+### 9C. Role-Permission Mapping — `rbac.role_permission`
+
+Source: URS 2.1.7 ("Default roles (e.g., Super Admin) have system-wide permissions")
+
+**Super Admin** gets ALL 60 permissions (linked automatically).
+
+Other role-permission assignments are configured at runtime by admins via the Users & Roles page (URS 2.1.7, 2.2.4). No other role-permission mappings need to be seeded — admins define them based on their farm's needs.
+
+---
+
+### 9D. Admin Reference Data — `admin_ref.*`
+
+These tables are populated by admins at runtime via the Admin Web App (URS 2.1.3-2.1.5). However, the URS provides examples that serve as reasonable starting data:
+
+#### `admin_ref.breed_type` (Goat Breeds)
+
+Source: URS 2.1.5 mentions "Boer, Jamnapari, Katjang"
+
+| name | is_active | Notes |
+|------|:---------:|-------|
+| Boer | true | URS example |
+| Jamnapari | true | URS example |
+| Katjang | true | URS example |
+
+Additional breeds may be added by admins. These three are starting examples, not mandatory.
+
+#### `admin_ref.breeding_type` (Breeding Methods)
+
+Source: URS 2.1.4, 2.2.9 mentions "Natural Mating, Artificial Insemination, Embryo Transfer"
+
+| name | is_active | Notes |
+|------|:---------:|-------|
+| Natural Mating | true | URS example |
+| Artificial Insemination | true | URS example |
+| Embryo Transfer | true | URS example |
+
+#### `admin_ref.vaccine_type` (Vaccine Types)
+
+Source: URS 2.1.3 mentions "CD&T, Rabies" as examples
+
+| name | interval_days | is_active | Notes |
+|------|:------------:|:---------:|-------|
+| CD&T | 180 | true | URS example (every 6 months) |
+
+Other vaccine types are admin-defined. The URS does not prescribe specific vaccines beyond examples.
+
+---
+
+### 9E. Enum Values (Status Fields)
+
+These are not stored in lookup tables but are used as string values across the system. Code must use these exact values (UPPERCASE).
+
+#### `farm.goat.status`
+
+Source: BLL Module 5A, Gap #2 (RESOLVED)
+
+| Value | Meaning |
+|-------|---------|
+| ACTIVE | Living goat, available for operations |
+| SLAUGHTERED | Processed via slaughter module |
+| SOLD | Sold and no longer on premise |
+| DEAD | Died (not slaughtered) |
+
+#### `auth.user_account.status`
+
+Source: BLL Module 4C
+
+| Value | Meaning |
+|-------|---------|
+| ACTIVE | Can log in |
+| INACTIVE | Soft-deleted, cannot log in, data preserved for audit |
+
+#### `core.premise.status`
+
+| Value | Meaning |
+|-------|---------|
+| ACTIVE | Operating premise |
+| INACTIVE | Deactivated |
+
+#### `auth.login_attempt.status`
+
+| Value | Meaning |
+|-------|---------|
+| SUCCESS | Successful login |
+| FAILED | Failed login attempt |
+
+#### `auth.otp.purpose`
+
+| Value | Meaning |
+|-------|---------|
+| PASSWORD_RESET | OTP for forgot password flow |
+
+#### `notify.notification.channel`
+
+| Value | Meaning |
+|-------|---------|
+| EMAIL | Sent via email (nodemailer) |
+| SMS | Sent via SMS (TBD integration) |
+
+#### `notify.notification.message_type`
+
+| Value | Meaning |
+|-------|---------|
+| OTP | One-time password delivery |
+| CREDENTIALS | New user login credentials |
+
+#### `notify.notification.status`
+
+| Value | Meaning |
+|-------|---------|
+| PENDING | Queued for sending |
+| SENT | Successfully delivered |
+| FAILED | Delivery failed |
+
+#### `core.user_profile.user_type`
+
+Source: URS 2.1.6
+
+| Value | Meaning |
+|-------|---------|
+| Individual | Personal registration |
+| Company | Company registration |
+
+---
+
+### 9F. What Does NOT Need Seed Data
+
+These tables are purely runtime — rows are created by users through the application:
+
+- `auth.user_account` — Created via user registration (Module 3)
+- `auth.login_attempt` — Auto-logged on every login attempt
+- `auth.otp` — Auto-generated during forgot password flow
+- `core.user_profile` — Created with user registration
+- `core.premise` — Created via Premise Management page (Module 4.5), selected during user registration
+- `core.user_document` — Uploaded during registration
+- `rbac.user_role` — Assigned when admin creates/edits users
+- `farm.*` (all tables) — Created through goat management, health, vaccination, breeding, slaughter modules
+- `calc.*` (all tables) — Created when users run calculators
+- `audit.audit_log` — Auto-logged by API
+- `notify.notification` — Auto-created when system sends emails/SMS

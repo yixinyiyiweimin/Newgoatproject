@@ -21,4 +21,14 @@ async function sendOTP(toEmail, otp) {
   });
 }
 
-module.exports = { sendOTP };
+async function sendCredentials(toEmail, tempPassword) {
+  await transporter.sendMail({
+    from: config.smtp.from,
+    to: toEmail,
+    subject: 'Goat Farm System - Your Account Credentials',
+    text: `Your account has been created.\n\nEmail: ${toEmail}\nTemporary Password: ${tempPassword}\n\nPlease login and change your password immediately.`,
+    html: `<p>Your account has been created.</p><p><strong>Email:</strong> ${toEmail}<br/><strong>Temporary Password:</strong> ${tempPassword}</p><p>Please login and change your password immediately.</p>`,
+  });
+}
+
+module.exports = { sendOTP, sendCredentials };

@@ -112,12 +112,16 @@ NUMBER:
 
 ## Rule 6: What AI Must NOT Do
 
+## Rule 6: What AI Must NOT Do
+
 1. **Never modify these files directly:**
    - `Frontend_Component_Mapping.csv`
    - `Backend_Business_Logic.md`
    - Existing `database/migrations/*` files that have already been applied — instead, create a NEW migration file for any database changes (e.g., `npx knex migrate:make add_goat_color`)
 
-2. **Instead, write proposed changes to `Development_Log.md`:**
+2. **Never tell the human to run SQL in pgAdmin.** All database changes — including schema changes (CREATE/ALTER/DROP) AND seed data (INSERT/UPDATE/DELETE for permissions, roles, reference data, fixes) — must be written as Knex migration files. See README.md "Database Migrations" section for examples.
+
+3. **Instead, write proposed changes to `Development_Log.md`:**
    ```markdown
    ## Proposed CSV Update
    - Add row: U-GOAT-019, Export PDF Button, /goats, ACTION, onClick, GET /api/goats/export
@@ -132,7 +136,7 @@ NUMBER:
    - Human runs: npx knex migrate:latest
    ```
 
-3. **Wait for human confirmation** before any master document update.
+4. **Wait for human confirmation** before any master document update.
 
 ---
 
@@ -201,11 +205,12 @@ Needs: Returns PDF/CSV of filtered goat list
 
 Before coding, AI should:
 
-1. Read `Backend_Business_Logic.md` (understand what APIs exist)
-2. Read `database/migrations/` (understand actual DB schema — use THESE column names in SQL)
-3. Read `Frontend_Component_Mapping.csv` (understand what components exist)
-4. Read `Development_Log.md` (understand pending work)
-5. Ask human: "What are we working on today?"
+1. Read `README.md` (understand workflow rules, session types, and database migration rules)
+2. Read `Backend_Business_Logic.md` (understand what APIs exist)
+3. Read `database/migrations/` (understand actual DB schema — use THESE column names in SQL)
+4. Read `Frontend_Component_Mapping.csv` (understand what components exist)
+5. Read `Development_Log.md` (understand pending work)
+6. Ask human: "What are we working on today?"
 
 ---
 

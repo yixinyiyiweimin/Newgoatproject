@@ -1,0 +1,180 @@
+.user-reg-page {
+  max-width: 1400px;
+}
+
+/* ─── User Table ─────────────────────────────────────────── */
+
+.user-table {
+  font-size: 13px;
+}
+
+.user-table th,
+.user-table td {
+  padding: 8px 10px;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.user-reg-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.user-reg-header h1 {
+  font-size: 24px;
+  color: #333;
+  margin: 0;
+}
+
+/* ─── User Tabs ───────────────────────────────────────────── */
+
+.user-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #eee;
+}
+
+.tab-btn {
+  padding: 10px 24px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn.active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+}
+
+.tab-btn:hover:not(.active) {
+  color: #333;
+}
+
+/* ─── User Form Modal ─────────────────────────────────────── */
+
+.user-form-modal {
+  max-width: 600px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form-hint {
+  font-size: 13px;
+  color: #999;
+  margin: 0;
+  font-style: italic;
+}
+
+/* ─── Status Badge ────────────────────────────────────────── */
+
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.active {
+  background: #c6f6d5;
+  color: #276749;
+}
+
+.status-badge.inactive {
+  background: #fed7d7;
+  color: #9b2c2c;
+}
+
+.status-badge.locked {
+  background: #fefcbf;
+  color: #975a16;
+}
+
+/* ─── User Actions ────────────────────────────────────────── */
+
+.user-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+/* ─── Inactive Users Section ──────────────────────────────── */
+
+.inactive-section {
+  margin-top: 32px;
+}
+
+.inactive-toggle-btn {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: all 0.2s;
+}
+
+.inactive-toggle-btn:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.inactive-table-wrapper {
+  opacity: 0.75;
+}
+
+.inactive-table-wrapper .crud-table tbody tr {
+  background: #fafafa;
+}
+
+/* ─── Date column ────────────────────────────────────────── */
+
+.crud-date {
+  color: #888;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ─── Detail Modal ────────────────────────────────────────── */
+
+.user-detail-modal {
+  max-width: 500px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.detail-grid div {
+  font-size: 14px;
+  color: #333;
+}
+
+.detail-grid strong {
+  color: #555;
+  margin-right: 6px;
+}

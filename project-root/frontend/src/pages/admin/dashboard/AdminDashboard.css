@@ -1,0 +1,205 @@
+.admin-dashboard h1 {
+  font-size: 24px;
+  color: #333;
+  margin: 0 0 24px 0;
+}
+
+.admin-dashboard h2 {
+  font-size: 18px;
+  color: #333;
+  margin: 0 0 16px 0;
+}
+
+/* ─── Error / Loading ─────────────────────────────────────── */
+
+.dash-error {
+  background: #fee;
+  color: #c33;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  border: 1px solid #fcc;
+  margin-bottom: 16px;
+}
+
+.dash-loading,
+.dash-empty {
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+  padding: 40px 0;
+}
+
+/* ─── Filter Controls ─────────────────────────────────────── */
+
+.dash-filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dash-filters input {
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 220px;
+  transition: border-color 0.2s;
+}
+
+.dash-filters input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.dash-filter-btn {
+  padding: 10px 20px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.dash-filter-btn:hover {
+  background: #5568d3;
+}
+
+.dash-clear-btn {
+  padding: 10px 20px;
+  background: white;
+  color: #667eea;
+  border: 1px solid #667eea;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.dash-clear-btn:hover {
+  background: #f0f0ff;
+}
+
+/* ─── Stat Cards ──────────────────────────────────────────── */
+
+.dash-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.dash-card {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.dash-card-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #667eea;
+}
+
+.dash-card-label {
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* ─── Bar Chart ───────────────────────────────────────────── */
+
+.dash-chart-section {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
+}
+
+.dash-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dash-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dash-bar-label {
+  width: 120px;
+  font-size: 14px;
+  color: #333;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.dash-bar-track {
+  flex: 1;
+  height: 24px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dash-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 4px;
+  min-width: 4px;
+  transition: width 0.3s ease;
+}
+
+.dash-bar-value {
+  width: 40px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* ─── District Table ──────────────────────────────────────── */
+
+.dash-table-section {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.dash-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dash-table th {
+  text-align: left;
+  padding: 10px 16px;
+  background: #f8f9fa;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  border-bottom: 2px solid #eee;
+}
+
+.dash-table td {
+  padding: 10px 16px;
+  font-size: 14px;
+  color: #333;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.dash-table tr:hover {
+  background: #f8f9ff;
+}

@@ -124,9 +124,45 @@ SESSION 3: Database Verification
 ```
 
 **Critical Rules:**
-- If AI needs a column that doesn't exist, it writes a migration file — NOT a pgAdmin instruction
+- If AI needs a column that doesn't exist, it writes a migration file -- NOT a pgAdmin instruction
 - pgAdmin is for VIEWING data and debugging, not for schema changes
 - Every schema change = a migration file in git
+
+---
+
+## Open Gaps & Decisions
+
+> **Moved from BLL Part 6.** These are project-level decisions, not API specs. Resolved items kept for historical reference.
+
+| # | Gap | Where | Decision Needed |
+|---|-----|-------|-----------------|
+| 1 | **No `rfid_scan_history` table** | URS 2.2.3 says display scan history | Add table? Or use sensor_data? |
+| 2 | ~~**Goat `status` values** not enumerated~~ | farm.goat.status | **RESOLVED** -- Values: ACTIVE, SLAUGHTERED, SOLD, DEAD |
+| 3 | **File storage strategy** | URS requires document uploads + goat images | Local disk? AWS S3? Need to decide |
+| 4 | **OTP delivery** | URS says email + SMS/WhatsApp | **PARTIALLY RESOLVED** -- Email via Gmail SMTP. SMS/WhatsApp TBD. |
+| 5 | **Premise-to-user scoping** | farm.goat has premise_id but no user_account_id | Correct design, needs consistent enforcement |
+| 6 | **user_profile.premise_id** is nullable FK | What if a user has no premise? | Make required for farm users, optional for admins? |
+| 7-10 | ~~FK gaps~~ | Various | **RESOLVED** -- All FKs exist in migration files |
+| 11 | **Notification content** | notify.notification has no `message_body` column | Handle email content in Express only (don't store body in DB) |
+| 12 | **Birth certificate PDF generation** | URS says "Generate Birth Certificates" | Use pdfkit or puppeteer in Express |
+| 13 | **Dashboard customization** | URS 2.1.2: "Allow admins to select data to display" | Discussion_Pending in CSV |
+| 14 | ~~**Feed Calculator "All Goats" tab**~~ | Needs avg weight from all active goats | **RESOLVED** -- Express computes dynamically |
+
+---
+
+## Deviations from URS V1.2
+
+> **Purpose:** Tracks intentional differences between URS and implementation. These are not bugs -- they are design improvements found during development. URS stays as the client-facing spec; this table is the internal record. Append new rows as you go.
+
+| # | URS Section | URS Says | We Did Instead | Reason |
+|---|-------------|----------|----------------|--------|
+| 1 | 2.1.6 | No role field in Individual/Company registration forms | Added role dropdown to create and edit modal | Usability -- admin shouldn't need two steps to assign role |
+| 2 | 2.1.6 | Premise created inline during user registration | Separate Premise Management page; registration selects from dropdown | Prevents duplicate/invalid premise entries (found during testing) |
+| 3 | 2.1.7 | Role deletion blocked if users assigned (409) | Auto-unassign users on delete with two-step confirm | Better UX -- avoids "go reassign manually first" dead end |
+| 4 | 2.1.7 | User delete is soft-delete only | Soft delete if active; hard delete cascade if already inactive | Allows permanent removal of test/erroneous data |
+| 5 | 2.1.3-2.1.5 | "Deleted types not selectable but remain in historical data" | Added archived records toggle with GET /archived endpoint | URS describes behavior but not UI mechanism; toggle makes it discoverable |
+| 6 | 2.1.7 | "Default roles have system-wide permissions" | Added system role lock (is_system_role flag) preventing permission edit | Prevents accidental lockout of Super Admin |
+| 7 | 2.1.6 | Person in Charge is a text field | DEFERRED -- keep text input until person_in_charge DB migration | Field not persisted in DB yet |
 
 ---
 

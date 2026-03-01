@@ -14,6 +14,9 @@ nul
 # Claude Code
 .claude/
 
+# MCP config (contains DB credentials)
+.mcp.json
+
 # IDE
 .vscode/
 .idea/
