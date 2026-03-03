@@ -298,3 +298,27 @@ Copy this for new components:
  * @notes: 
  */
 ```
+
+## Rule 13: Frontend API URL Must Be Relative
+
+The API base URL fallback in `frontend/src/utils/api.js` must always be a relative path (`'/api'`), 
+never an absolute URL like `http://localhost:3000/api`.
+
+**Why:** Frontend code runs in the user's browser. `localhost` means the user's machine, not the server. 
+Absolute localhost URLs break when the frontend is accessed from a different machine (Pi, funnel, etc.).
+
+**Correct:**
+```js
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+```
+
+**Wrong:**
+```js
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+```
+
+**How it works:** Vite's proxy in `vite.config.js` intercepts `/api` requests server-side and forwards 
+them to `http://localhost:3000`. This works in all environments without code changes.
+
+**`VITE_API_URL` env var** is only needed if the API is on a completely different domain (e.g., production 
+behind a separate load balancer). For local dev and Pi deployment, the proxy handles everything.
